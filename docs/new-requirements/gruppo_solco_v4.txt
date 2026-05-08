@@ -1,0 +1,2728 @@
+﻿ 
+ 
+
+ 
+
+ 
+
+
+ 
+
+ 
+
+ ALBO FORNITORI DIGITALE 
+
+ Processo · Questionari · Struttura Operativa 
+
+ 
+
+ Documento di Progettazione 
+
+ Versione 1.0 · 2025 
+
+ Uso interno — Riservato 
+
+ 
+ 
+
+
+ Indice 
+
+ 
+
+
+ Sommario 
+
+
+ 	 TOC \o "1-3" \h \z \u Indice 	 PAGEREF _Toc225417169 \h 2 
+
+
+ 	 1. Contesto, obiettivi e struttura dell'Albo 	 PAGEREF _Toc225417170 \h 3 
+
+
+ 	 1.1 Il Gruppo Solco e il fabbisogno di procurement 	 PAGEREF _Toc225417171 \h 3 
+
+
+ 	 1.2 Obiettivi del sistema 	 PAGEREF _Toc225417172 \h 3 
+
+
+ 	 1.3 Struttura dell'Albo: Albo A e Albo B 	 PAGEREF _Toc225417173 \h 3 
+
+
+ 	 2. Il processo dell'Albo Fornitori Digitale 	 PAGEREF _Toc225417174 \h 4 
+
+
+ 	 2.1 Modalità di accesso al Portale 	 PAGEREF _Toc225417175 \h 4 
+
+
+ 	 Canale A — Iscrizione su invito (modalità privilegiata) 	 PAGEREF _Toc225417176 \h 4 
+
+
+ 	 Canale B — Iscrizione spontanea (accesso pubblico) 	 PAGEREF _Toc225417177 \h 4 
+
+
+ 	 2.2 Flusso completo del processo 	 PAGEREF _Toc225417178 \h 4 
+
+
+ 	 2.3 Back-end — Area Amministrativa Gruppo Solco 	 PAGEREF _Toc225417179 \h 7 
+
+
+ 	 Livelli di accesso e profili utente amministrativi 	 PAGEREF _Toc225417180 \h 7 
+
+
+ 	 Dashboard principale (schermata home del back-end) 	 PAGEREF _Toc225417181 \h 7 
+
+
+ 	 Ricerca e navigazione dell'Albo (lista fornitori) 	 PAGEREF _Toc225417182 \h 7 
+
+
+ 	 Scheda profilo fornitore (vista back-end) 	 PAGEREF _Toc225417183 \h 8 
+
+
+ 	 Azioni disponibili nel back-end (per profilo fornitore) 	 PAGEREF _Toc225417184 \h 8 
+
+
+ 	 2.4 Front-end — Area Riservata Fornitore 	 PAGEREF _Toc225417185 \h 8 
+
+
+ 	 Pagina pubblica di accesso (pre-login) 	 PAGEREF _Toc225417186 \h 8 
+
+
+ 	 Questionario di iscrizione (compilazione guidata) 	 PAGEREF _Toc225417187 \h 9 
+
+
+ 	 Area riservata post-iscrizione (profilo fornitore) 	 PAGEREF _Toc225417188 \h 9 
+
+
+ 	 2.5 Sistema di notifiche automatiche 	 PAGEREF _Toc225417189 \h 9 
+
+
+ 	 2.6 Sistema di valutazione dei Fornitori 	 PAGEREF _Toc225417190 \h 10 
+
+
+ 	 Scheda di valutazione 	 PAGEREF _Toc225417191 \h 10 
+
+
+ 	 2.7 Ciclo di vita del Profilo Fornitore 	 PAGEREF _Toc225417192 \h 11 
+
+
+ 	 3. Albo A — Questionario Professionisti 	 PAGEREF _Toc225417193 \h 13 
+
+
+ 	 3.1 Sezione 1 — Dati anagrafici 	 PAGEREF _Toc225417194 \h 13 
+
+
+ 	 3.2 Sezione 2 — Tipologia Professionale 	 PAGEREF _Toc225417195 \h 14 
+
+
+ 	 3.3 Sezione 3A — Scheda Docente / Formatore 	 PAGEREF _Toc225417196 \h 14 
+
+
+ 	 A — Istruzione e Abilitazioni 	 PAGEREF _Toc225417197 \h 14 
+
+
+ 	 B — Aree Tematiche di Competenza 	 PAGEREF _Toc225417198 \h 14 
+
+
+ 	 C — Disponibilità, Territorio e Condizioni Operative 	 PAGEREF _Toc225417199 \h 16 
+
+
+ 	 D — Esperienze formative (fino a 5 esperienze, ultimi 5 anni) 	 PAGEREF _Toc225417200 \h 16 
+
+
+ 	 E — Referenze (fino a 2, non obbligatorio 	 PAGEREF _Toc225417201 \h 16 
+
+
+ 	 F — Allegati 	 PAGEREF _Toc225417202 \h 16 
+
+
+ 	 3.4 Sezione 3B — Scheda Altri Professionisti 	 PAGEREF _Toc225417203 \h 17 
+
+
+ 	 3.6 Sezione 5 — Dichiarazioni e consensi 	 PAGEREF _Toc225417204 \h 17 
+
+
+ 	 4. Albo B — Questionario Aziende 	 PAGEREF _Toc225417205 \h 19 
+
+
+ 	 4.1 Sezione 1 — Dati Aziendali 	 PAGEREF _Toc225417206 \h 19 
+
+
+ 	 4.2 Sezione 2 — Struttura, dimensione e settore 	 PAGEREF _Toc225417207 \h 20 
+
+
+ 	 4.3 Sezione 3 — Tipologia e servizi offerti 	 PAGEREF _Toc225417208 \h 20 
+
+
+ 	 Categoria A — Formazione, didattica e contenuti 	 PAGEREF _Toc225417209 \h 20 
+
+
+ 	 Categoria B — HR, Lavoro e Organizzazione 	 PAGEREF _Toc225417210 \h 21 
+
+
+ 	 Categoria C — Tecnologia e digitale 	 PAGEREF _Toc225417211 \h 21 
+
+
+ 	 Categoria D — Consulenza, professioni e compliance 	 PAGEREF _Toc225417212 \h 22 
+
+
+ 	 Categoria E — Servizi generali e operativi 	 PAGEREF _Toc225417213 \h 22 
+
+
+ 	 Certificazioni e accreditamenti 	 PAGEREF _Toc225417214 \h 23 
+
+
+ 	 Allegati aziendali 	 PAGEREF _Toc225417215 \h 23 
+
+
+ 	 4.5 Sezione 5 — Dichiarazioni e conformità 	 PAGEREF _Toc225417216 \h 23 
+
+
+ 	 5. Note Operative e Linee Guida 	 PAGEREF _Toc225417217 \h 25 
+
+
+ 	 5.1 Revisione Annuale e Aggiornamento dei Profili 	 PAGEREF _Toc225417218 \h 25 
+
+
+ 	 5.2 Privacy e Trattamento dei Dati (GDPR) 	 PAGEREF _Toc225417219 \h 25 
+
+
+ 	 5.3 Codice Etico e Standard del Gruppo 	 PAGEREF _Toc225417220 \h 25 
+
+
+ 	 5.4 Roadmap e Sviluppi Futuri 	 PAGEREF _Toc225417221 \h 25 
+ 
+
+
+ 
+ 
+
+ PARTE 1 — Contesto e Obiettivi 
+
+ 
+
+
+ 1. Contesto, obiettivi e struttura dell'Albo 
+
+
+ 1.1 Il Gruppo Solco e il fabbisogno di procurement 
+
+ Il Gruppo Solco è un insieme di società che operano in modo integrato nei seguenti ambiti: consulenza e gestione delle risorse umane; tecnologie e piattaforme per il 
+ digital 
+ learning; agenzia del lavoro (APL); formazione continua, permanente, digitale e per disoccupati; finanza agevolata, bandi europei e sviluppo d'impresa; attività del terzo settore. La eterogeneità e la complementarietà di questi settori genera una domanda di fornitura estremamente variegata , che include tanto presone fisiche – docenti e consulenti in 
+ prims 
+ – quanto imprese. 
+
+ L'Albo Fornitori Digitale nasce per rispondere a questa esigenza, centralizzando la raccolta, la qualificazione e la gestione di tutti i fornitori — professionisti e aziende — in un unico sistema condiviso e governato. 
+
+ 
+
+
+ 1.2 Obiettivi del sistema 
+
+
+ Creare un registro digitale unico e aggiornato di tutti i fornitori qualificati del Gruppo, organizzato per tipologia, area tematica e localizzazione geografica. 
+
+
+ Standardizzare il processo di selezione e 
+ onboarding 
+ dei fornitori, riducendo i tempi e garantendo la completezza documentale e dichiarativa. 
+
+
+ Abilitare la ricerca rapida del fornitore più adatto per una specifica esigenza, anche tra più società del Gruppo. 
+
+
+ Tracciare la qualità delle collaborazioni attraverso un sistema di valutazione strutturato e condiviso tra i referenti abilitati. 
+
+
+ Garantire la conformità normativa (GDPR, 
+ D.Lgs. 
+ 231/01, 
+ D.Lgs. 
+ 81/08, antimafia) in modo sistematico e verificabile. 
+
+
+ Creare le basi per l' eventuale integrazione futura con i sistemi gestionali del Gruppo (contratti, fatturazione, piattaforme LMS). 
+
+ 
+
+
+ 1.3 Struttura dell'Albo: Albo A e Albo B 
+
+ L'Albo è suddiviso in due macrocategorie distinte, ognuna con un questionario dedicato e un percorso di qualificazione specifico: 
+
+
+ Albo A — Professionisti: persone fisiche che operano in forma autonoma. Include docenti e formatori (categoria principale) e consulenti specializzati negli ambiti di business aziendale . I profili sono strutturati attorno alla tipologia di prestazione offerta, all'area tematica di competenza e — per i docenti — alla specifica expertise metodologica e didattica. 
+
+
+ Albo B — Aziende e Organizzazioni: persone giuridiche di qualsiasi forma (SRL, SPA, cooperative, consorzi, fondazioni, associazioni, studi associati). Include , ad esempio, fornitori di servizi formativi, agenzie del lavoro, software house, studi professionali associati, fornitori di servizi generali, enti del terzo settore . La qualificazione riguarda la solidità organizzativa, la documentazione societaria e contributiva, i servizi offerti e le referenze. 
+
+ 
+
+ Nota metodologica: il sistema è stato progettato per essere semplice da compilare per il fornitore (massima guidabilità, salvataggio automatico, nessun obbligo di compilazione in un'unica sessione) e al contempo esaustivo e governabile per l'amministrazione del Gruppo (workflow di approvazione, notifiche automatiche, valutazioni, audit 
+ trail 
+ ). 
+
+ 
+
+ 
+ 
+
+ PARTE 2 — Il Processo dell'Albo Fornitori Digitale 
+
+ 
+
+
+ 2. Il processo dell'Albo Fornitori Digitale 
+
+
+ 2.1 Modalità di accesso al Portale 
+
+ L'accesso al portale avviene attraverso due canali, entrambi convergenti sullo stesso questionario digitale. Il sistema riconosce da quale canale proviene il compilatore e adatta di conseguenza il comportamento (es. 
+ pre 
+ -compilazione dell'e-mail per gli inviti, flag di provenienza per le statistiche amministrative). 
+
+ 
+
+
+ Canale A — Iscrizione su invito (modalità privilegiata) 
+
+ Le Business Unit (o Aree di Staff) del Gruppo Solco, di concerto con il Responsabile Procurement individuano un fornitore con cui intende attivare o regolarizzare un rapporto di collaborazione e ne avviano l'iscrizione dall'area back-end. Il sistema genera automaticamente una e-mail personalizzata contenente un link univoco (token monouso) con durata configurabile — default 30 giorni, rinnovabile dall'amministratore. Il link porta direttamente al modulo di iscrizione, con il campo e-mail 
+ pre 
+ -valorizzato e non modificabile. Se il link scade prima della compilazione, il fornitore riceve una notifica e l'amministratore viene avvisato per decidere se rinnovare l'invito. Questa modalità è indicata per fornitori già noti al Gruppo, per agenti in contratto attivo non ancora censiti, e per campagne mirate di qualificazione di specifiche categorie di fornitori. 
+
+ 
+
+
+ Canale B — Iscrizione spontanea (accesso pubblico) 
+
+ Un professionista o un'azienda accede autonomamente alla pagina pubblica dell'Albo Fornitori del Gruppo Solco — raggiungibile dal 
+ sitoo 
+ tramite un URL dedicato — e seleziona il tipo di iscrizione (Albo A o Albo B). Crea un account con e-mail e password, verifica l'indirizzo e-mail tramite un codice OTP, e accede al questionario. Una volta inviata la candidatura, il profilo viene posto automaticamente in stato In Attesa di Revisione e resta invisibile all'interno dell'Albo fino all'approvazione esplicita da parte dell'amministrazione. Non esiste auto-approvazione: ogni iscrizione spontanea richiede una presa in carico umana. 
+
+ 
+
+ Entrambi i canali convergono sullo stesso questionario strutturato. La differenza è esclusivamente nell'origine dell'accesso e nella gestione del flusso di approvazione (gli invitati possono avere un percorso di approvazione agevolato, configurabile dall'amministratore). 
+
+ 
+
+
+ 2.2 Flusso completo del processo 
+
+ # 
+
+ Fase 
+
+ Descrizione dettagliata 
+
+ 1 
+
+ Accesso al sistema 
+
+ L'amministrazione invia un invito via back-end (canale A), oppure il fornitore accede autonomamente alla pagina pubblica (canale B). In entrambi i casi, il fornitore seleziona se iscriversi come Professionista (Albo A) o come Azienda (Albo B). Questa selezione è definitiva: per cambiare tipo di iscrizione occorre una nuova candidatura. 
+
+ 2 
+
+ Creazione account e verifica identità 
+
+ Il fornitore inserisce il proprio indirizzo e-mail, sceglie una password sicura (min. 8 caratteri con regole di complessità) e accetta preliminarmente i termini di servizio e la privacy policy. Il sistema invia immediatamente una e-mail con codice OTP a 6 cifre valido per 15 minuti. Senza verifica dell'e-mail, il questionario non è accessibile. 
+
+ 3 
+
+ Presentazione del questionario e navigazione guidata 
+
+ Il fornitore accede al questionario strutturato in sezioni numerate con barra di avanzamento visibile (es. 'Sezione 2 di 5'). Ogni sezione è presentata su una schermata dedicata. Il sistema salva automaticamente ogni risposta in draft ogni 30 secondi. Il fornitore può uscire in qualsiasi momento e riprendere da dove aveva lasciato accedendo nuovamente con le proprie credenziali. 
+
+ 4 
+
+ Compilazione adattiva 
+
+ Il questionario si adatta dinamicamente alle risposte: la selezione della tipologia professionale (Sezione 2 per Albo A) o del settore (Sezione 2 per Albo B) determina quali sezioni specifiche vengono presentate. Solo le domande pertinenti al profilo vengono mostrate. I campi obbligatori sono evidenziati chiaramente; i campi facoltativi sono contrassegnati come 'opzionale'. 
+
+ 5 
+
+ Upload dei documenti 
+
+ In apposite sezioni del questionario, il fornitore carica i documenti richiesti (CV, visura, DURC, certificazioni, ecc.). Il sistema accetta formati PDF e immagine (JPG, PNG), con limite di dimensione per singolo file. Vengono mostrati 
+ placeholder 
+ chiari con istruzioni su cosa caricare. I documenti già caricati sono mostrati con anteprima e pulsante di sostituzione. 
+
+ 6 
+
+ Accettazione dichiarazioni e firma 
+
+ Nell'ultima sezione, il fornitore legge e accetta — con 
+ checkbox 
+ singoli — tutte le dichiarazioni obbligatorie: ad es. Privacy Policy, Codice Etico, standard qualità/ambiente/sicurezza, dichiarazioni sostitutive di atto notorio. Senza accettazione di tutte le voci obbligatorie, il pulsante 'Invia candidatura' rimane disabilitato. 
+
+ 7 
+
+ Invio candidatura e conferma 
+
+ Il fornitore clicca 'Invia candidatura'. Il sistema esegue una validazione finale di tutti i campi obbligatori. In presenza di errori, riporta il fornitore alla sezione problematica con indicazioni specifiche. Se tutto è corretto, la candidatura viene protocollata con un codice univoco (es. A-2025-0042), il profilo passa in stato In Attesa di Revisione, e viene inviata una e-mail di conferma al fornitore con riepilogo sintetico dei dati trasmessi e codice di protocollo. 
+
+ 8 
+
+ Notifica e presa in carico amministrativa 
+
+ L'amministrazione del Gruppo riceve una notifica immediata di nuova candidatura (e-mail e alert nel back-end). Un referente amministrativo abilitato prende in carico la pratica. Il sistema registra la presa in carico (utente, data e ora) per la tracciabilità. Se la pratica non viene presa in carico entro un periodo configurabile (default 5 giorni lavorativi), viene inviato un sollecito automatico all'amministrazione. 
+
+ 9 
+
+ Revisione documentale 
+
+ Il referente amministrativo esamina la candidatura nel pannello di revisione del back-end. Verifica completezza documentale, coerenza delle informazioni, validità del DURC (se presente), presenza di eventuali segnalazioni (es. omonimie, doppi profili). Può inserire note interne non visibili al fornitore. Può confrontare il profilo con eventuali candidature precedenti dello stesso soggetto. 
+
+ 10 
+
+ Richiesta integrazioni (se necessario) 
+
+ Se la documentazione è incompleta o richiede chiarimenti, l'amministratore invia una richiesta di integrazione tramite il sistema, specificando esattamente cosa manca o cosa deve essere corretto. Il fornitore riceve una notifica e-mail e può accedere al proprio profilo per caricare i documenti mancanti o modificare le sezioni indicate. La storia di tutte le richieste e le risposte è tracciata nel log della pratica. 
+
+ 11 
+
+ Decisione: approvazione o rigetto 
+
+ L'amministratore approva o rigetta la candidatura. In entrambi i casi, è obbligatorio compilare un campo motivazione (visibile al fornitore solo in caso di rigetto, in forma sintetica). Il sistema registra la decisione con data, ora e utente che l'ha presa. In caso di approvazione, il profilo viene immediatamente attivato e diventa visibile e ricercabile nell'Albo. 
+
+ 12 
+
+ Comunicazione al fornitore e attivazione 
+
+ Il fornitore riceve una notifica e-mail personalizzata: in caso di approvazione, una email di benvenuto con istruzioni per accedere all'area riservata e aggiornare il profilo; in caso di rigetto, una comunicazione con la motivazione e le indicazioni per eventuale 
+ ri 
+ -candidatura ( possibile dopo un certo periodo di tempo da stabilire ). L'accesso all'area riservata è attivo immediatamente dopo l'approvazione. 
+
+ 13 
+
+ Gestione del profilo attivo 
+
+ Il fornitore accede alla propria area riservata per: visualizzare il proprio profilo come appare nell'Albo, aggiornare informazioni non sensibili (es. recapiti, disponibilità), caricare documenti aggiornati, consultare lo storico delle variazioni di stato del profilo. Modifiche a dati sostanziali (es. tipologia professionale, ATECO, servizi offerti) sono soggette a riapprovazione. 
+
+ 14 
+
+ Revisione annuale 
+
+ Il sistema calcola la data di scadenza di ogni profilo (12 mesi dall'ultima approvazione /iscrizione ). A 60 giorni dalla scadenza invia la prima notifica, a 15 giorni la seconda. Se il fornitore non effettua il rinnovo, il profilo viene automaticamente sospeso il giorno della scadenza. La riapertura può avvenire accedendo all'area riservata e completando l'aggiornamento, che è soggetto a nuova approvazione. I dati esistenti rimangono 
+ pre 
+ -compilati per facilitare il rinnovo. 
+
+ 
+
+ 
+ 
+
+
+ 2.3 Back-end — Area Amministrativa Gruppo Solco 
+
+ Il back-end è la console di gestione riservata al personale autorizzato del Gruppo Solco. È accessibile da browser web. L'accesso è protetto da autenticazione a due fattori (2FA). Sono previsti più livelli di profilo utente, configurabili dall'amministratore di sistema. 
+
+ 
+
+
+ Livelli di accesso e profili utente amministrativi 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Super Admin 
+
+ Accesso completo 
+
+ Configura tutti i parametri del sistema, gestisce gli utenti amministrativi, accede ai log completi, può cancellare profili definitivamente, gestisce le regole di notifica e scadenza. 
+ Responsabile Albo (Procurement) 
+
+ Approvazione e gestione 
+
+ Approva/rigetta le candidature, sospende e riattiva i profili, invia inviti, legge tutte le note interne, esporta l'Albo, visualizza i log delle proprie azioni e di quelle del team. 
+
+ User 
+
+ Revisione documentale e valutazioni 
+
+ Verifica la documentazione delle candidature, inserisce note interne, richiede integrazioni al fornitore. Non può approvare o rigettare. Può inserire valutazioni sui fornitori con cui ha collaborato direttamente. Non vede dati sensibili (CF, IBAN, ecc.). Non può modificare i profili. 
+
+ Viewer 
+
+ Solo lettura 
+
+ Può cercare e consultare i profili attivi dell'Albo per scopi operativi (es. commerciali, di progetto). Non vede documenti allegati né note interne. 
+
+ 
+
+ I profili sono cumulabili: un utente può avere, ad esempio, sia il profilo 'Revisore' che 'Valutatore'. L'assegnazione dei profili è tracciata nel log di sistema. 
+
+ 
+
+
+ Dashboard principale (schermata home del back-end) 
+
+ La dashboard è la prima schermata visualizzata dall'amministratore al login. Presenta in forma visuale e numerica lo stato dell'Albo in tempo reale. Le informazioni mostrate variano in base al profilo utente. Di seguito i principali widget e indicatori previsti: 
+
+
+ Riepilogo contatori: totale fornitori attivi (con distinzione Albo A / Albo B), totale profili sospesi, totale in attesa di revisione, totale inviti pendenti non ancora completati. 
+
+
+ Alert e notifiche in evidenza: candidature in attesa da più di N giorni (configurab i le), profili in scadenza nei prossimi 30 giorni, integrazioni richieste senza risposta da più di 7 giorni. 
+
+
+ Feed attività recenti: ultime azioni registrate (es. 'Approvato: Mario Rossi - 10 minuti fa', 'Nuova candidatura spontanea: Alfa SRL'), con link diretto al profilo. 
+
+
+ Grafico di trend: nuove iscrizioni degli ultimi 6 mesi (per tipo Albo A/B), con possibilità di espandere a viste mensili o annuali. 
+
+
+ Quick actions: pulsanti rapidi per le azioni più frequenti — 'Invia 
+ invito' 
+ , 'Nuova revisione pendente', 'Esporta Albo'. 
+
+ 
+
+
+ Ricerca e navigazione dell'Albo (lista fornitori) 
+
+ La schermata principale di navigazione dell'Albo è una lista filtrata e ordinabile di tutti i profili. È la schermata più utilizzata nel quotidiano e deve supportare ricerche rapide e precise. Funzionalità previste — base per il 
+ mockup 
+ della lista: 
+
+
+ Barra di ricerca full-text: ricerca per nome, ragione sociale, codice fiscale, partita IVA, e-mail. I risultati sono mostrati in tempo reale (ricerca istantanea). 
+
+
+ Filtri avanzati combinabili: tipologia (Albo A/B), stato del profilo (attivo, sospeso, in attesa, ecc.), area tematica/ di competenza o categoria di servizio, territorio/regione/provincia, presenza di certificazioni specifiche (es. ISO 9001), fascia di punteggio di valutazione, data di iscrizione o di scadenza. 
+
+
+ Ordinamento: per nome, per data di iscrizione, per punteggio di valutazione, per data di scadenza. 
+
+
+ Vista lista e vista scheda: la lista mostra nome, tipologia, area principale, stato e punteggio; la scheda apre il profilo completo. 
+
+
+ Selezione multipla: possibilità di selezionare più profili per azioni massive (es. invio e-mail di gruppo, esportazione selezione). 
+
+
+ Esportazione: esporta la lista corrente (con i filtri applicati) in formato Excel (. 
+ xlsx 
+ ) o PDF, scegliendo quali campi includere. 
+
+ 
+
+
+ Scheda profilo fornitore (vista back-end) 
+
+ La scheda di dettaglio di un fornitore, accessibile dal back-end, mostra tutte le informazioni disponibili e le azioni applicabili. È organizzata in tab orizzontali per facilitare la navigazione — questa struttura è la base per il 
+ mockup 
+ della scheda: 
+
+
+ Tab 'Profilo': tutti i dati anagrafici e le informazioni del questionario, organizzati nelle stesse sezioni della compilazione. 
+
+
+ Tab 'Documenti': lista di tutti i documenti allegati con anteprima 
+ inline 
+ , data di upload, dimensione e pulsante di download. Evidenzia i documenti scaduti o prossimi alla scadenza (es. DURC). 
+
+
+ Tab 'Valutazioni': lista di tutte le valutazioni ricevute con punteggio dettagliato per dimensione, commento, data e utente valutatore. 
+
+
+ Tab 'Storico': log completo di tutte le azioni effettuate sul profilo — con data, ora, utente e dettaglio dell'azione (es. 'Stato modificato: In Attesa → Attivo da Mario Bianchi il 10/03/2025'). 
+
+
+ Tab 'Note interne': area per inserire note libere non visibili al fornitore (es. 'Contatto commerciale di riferimento: Luca 
+ Verdi' 
+ , 'Da coinvolgere per commessa X'). 
+
+
+ Tab 'Comunicazioni': cronologia di tutte le e-mail automatiche e manuali inviate al fornitore dal sistema. 
+
+ 
+
+
+ Azioni disponibili nel back-end (per profilo fornitore) 
+
+
+ Approva candidatura: attiva il profilo; richiede motivazione facoltativa; notifica il fornitore. 
+
+
+ Rigetta candidatura: richiede motivazione obbligatoria (visibile al fornitore in forma sintetica); imposta embargo di 6 mesi (configurabile) per nuove candidature dello stesso soggetto. 
+
+
+ Richiedi integrazioni: apre un modulo con lista di campi/documenti da completare, scadenza della richiesta, messaggio personalizzabile; notifica il fornitore. 
+
+
+ Sospendi profilo: il profilo rimane visibile agli amministratori ma non agli utenti Viewer e non compare nelle ricerche operative; richiede motivazione obbligatoria; notifica il fornitore. 
+
+
+ Riattiva profilo: ripristina lo stato Attivo da una sospensione; notifica il fornitore. 
+
+
+ Cancella profilo (solo Super Admin): rimozione definitiva con obbligo di motivazione; innesca il processo di cancellazione dati GDPR; notifica il fornitore con policy di conservazione. 
+
+
+ Invia invito (nuovo): genera un nuovo link univoco verso un indirizzo e-mail specificato; personalizzabile con messaggio introduttivo. 
+
+
+ Rinnova invito scaduto: rigenera un token di accesso per un invito precedentemente scaduto. 
+
+
+ Aggiungi nota interna: visibile solo agli utenti con accesso al back-end; con campo testo libero e data automatica. 
+
+
+ Inserisci valutazione: accessibile solo ai valutatori abilitati che abbiano lavorato con quel fornitore. 
+
+
+ Esporta scheda singola: genera un PDF della scheda profilo (senza dati sensibili, o versione completa a seconda del livello di accesso). 
+
+ 
+
+
+ 2.4 Front-end — Area Riservata Fornitore 
+
+ Il front-end è l'interfaccia che il fornitore — professionista o azienda — utilizza per compilare il questionario di iscrizione, gestire il proprio profilo e interagire con l'amministrazione del Gruppo Solco. È accessibile da qualsiasi dispositivo (desktop, tablet, smartphone). Deve essere ottimizzato anche per la compilazione da mobile. 
+
+ 
+
+
+ Pagina pubblica di accesso ( 
+ pre 
+ -login) 
+
+ La prima schermata pubblica è il punto di ingresso per chi accede spontaneamente. Deve comunicare in modo semplice e rassicurante chi è il Gruppo Solco, cosa si intende per Albo Fornitori e perché vale la pena iscriversi. Contenuti previsti — base per il 
+ mockup 
+ della landing page: 
+
+
+ Breve presentazione del Gruppo Solco e dell'Albo Fornitori con tono accogliente e professionale. 
+
+
+ Selezione del tipo di iscrizione con due card visive: 'Sono un professionista (Albo A)' e 'Rappresento un'azienda (Albo B)', ognuna con breve descrizione e icona. 
+
+
+ Link al login per chi ha già un account. 
+
+
+ Link alle FAQ sull'iscrizione e alla Privacy Policy. 
+
+
+ Informazioni sui tempi di approvazione e sul processo (es. 'La tua candidatura verrà esaminata entro 10 giorni lavorativi'). 
+
+ 
+
+
+ Questionario di iscrizione (compilazione guidata) 
+
+ Il questionario è la schermata centrale dell'esperienza del fornitore. Deve essere percepito come semplice, lineare e non intimidatorio. Caratteristiche chiave dell'interfaccia — base per il 
+ mockup 
+ del 
+ wizard 
+ di compilazione: 
+
+
+ Struttura a 
+ wizard 
+ ( 
+ step-by-step 
+ ): una sezione per volta, con indicatore di progresso numerico e percentuale di completamento ('Stai completando il 40% del 
+ modulo' 
+ ). 
+
+
+ Salvataggio automatico visibile: un indicatore ('Bozza salvata automaticamente') rassicura il fornitore che può interrompere e riprendere. 
+
+
+ Navigazione avanti/indietro: possibilità di tornare a sezioni precedenti senza perdere i dati già inseriti. 
+
+
+ Validazione 
+ inline 
+ : gli errori di compilazione sono mostrati campo per campo, in rosso, immediatamente dopo che il fornitore lascia il campo. Non si accumula un elenco di errori solo alla fine. 
+
+
+ 
+ Tooltip 
+ contestuali: alcuni campi complessi ha nno una piccola icona '?' che apre una spiegazione sintetica (es. 'Cosa si intende per regime forfettario?', 'Dove trovo il codice ATECO?'). 
+
+
+ Caricamento documenti con drag-and-drop e feedback visivo: barra di avanzamento upload, anteprima miniatura, pulsante di rimozione. 
+
+
+ Riepilogo finale prima dell'invio: pagina di recap con tutti i dati inseriti, modificabile prima della conferma definitiva. 
+
+ 
+
+
+ Area riservata post-iscrizione (profilo fornitore) 
+
+ Dopo l'approvazione, il fornitore accede a un'area riservata personale che funge da hub per la gestione del rapporto con il Gruppo Solco. Funzionalità previste — base per il 
+ mockup 
+ dell'area personale: 
+
+
+ Scheda di stato: banner visivo che mostra lo stato attuale del profilo (Attivo / Sospeso / In aggiornamento) con data di scadenza e contatore di giorni al rinnovo. 
+
+
+ Il mio profilo: visualizzazione del profilo come appare nell'Albo (con possibilità di anteprima), pulsante per richiedere modifiche. 
+
+
+ Le mie valutazioni: punteggio aggregato (stelle), numero di valutazioni ricevute, commenti anonimi lasciati dai referenti del Gruppo. 
+
+
+ I miei documenti: lista dei documenti caricati con data di upload e stato (valido / scaduto / da aggiornare), pulsante di sostituzione. 
+
+
+ Messaggi e comunicazioni: cronologia delle comunicazioni ricevute dall'amministrazione (richieste di integrazione, notifiche di stato, ecc.) con possibilità di risposta. 
+
+
+ Rinnovo del profilo: al momento della scadenza annuale, la sezione mostra un banner prominente con contatore e pulsante diretto per avviare il rinnovo. 
+
+
+ Download scheda profilo: genera un PDF personalizzato con i dati del profilo (senza dati sensibili come CF e IBAN), utile per condividerlo come presentazione. 
+
+ 
+
+
+ 2.5 Sistema di notifiche automatiche 
+
+ Tutte le notifiche automatiche sono gestite da un motore di invio e-mail configurabile dall'amministrazione. I template sono personalizzabili nel testo, con variabili dinamiche (nome fornitore, codice protocollo, link diretto all'azione richiesta, ecc.). Ogni e-mail include il logo del Gruppo Solco e un link per contattare l'assistenza. 
+
+ 
+
+ Evento trigger 
+
+ Destinatario 
+
+ Contenuto e canale 
+
+ Invio link di invito a iscriversi 
+
+ Fornitore (invitato) 
+
+ E-mail con link univoco, presentazione del Gruppo Solco, istruzioni per la compilazione, data di scadenza del link 
+
+ Scadenza imminente del link invito (–5 gg) 
+
+ Fornitore (invitato) 
+
+ Promemoria con stesso link, indicazione giorni rimanenti 
+
+ Link invito scaduto senza utilizzo 
+
+ Admin + Fornitore 
+
+ Admin: alert per decidere se rinnovare; Fornitore: comunicazione scadenza con invito a contattare Solco 
+
+ Verifica e-mail (OTP) al momento dell'iscrizione 
+
+ Fornitore 
+
+ E-mail con codice OTP a 6 cifre, valido 15 minuti 
+
+ Conferma ricezione candidatura 
+
+ Fornitore + Admin 
+
+ Fornitore: codice protocollo + riepilogo dati + tempi stimati; Admin: alert nuova candidatura da esaminare 
+
+ Presa in carico pratica (>5 gg senza azione) 
+
+ Admin (sollecito) 
+
+ Alert interno: candidatura in attesa senza assegnazione 
+
+ Risposta a richiesta di integrazione 
+
+ Admin 
+
+ Alert che il fornitore ha caricato nuovi documenti, link alla pratica 
+
+ Approvazione iscrizione 
+
+ Fornitore 
+
+ E-mail di benvenuto con accesso all'area riservata, guida rapida alle funzionalità 
+
+ Rigetto candidatura 
+
+ Fornitore 
+
+ Motivazione sintetica, indicazione del periodo di embargo per nuova candidatura, contatto per chiarimenti 
+
+ Sospensione profilo 
+
+ Fornitore 
+
+ Motivazione, azioni necessarie per il ripristino, link all'area riservata 
+
+ Riattivazione profilo 
+
+ Fornitore 
+
+ Conferma riattivazione con data e stato aggiornato 
+
+ Cancellazione definitiva profilo 
+
+ Fornitore 
+
+ Conferma cancellazione, policy di conservazione dei dati (GDPR), indicazioni per esercitare i diritti 
+
+ Nuova valutazione ricevuta 
+
+ Fornitore 
+
+ Notifica generica (senza nome del valutatore), invito a consultare il punteggio nell'area riservata 
+
+ Scadenza revisione annuale (–60 giorni) 
+
+ Fornitore 
+
+ Promemoria con data scadenza, link diretto al rinnovo, spiegazione del processo 
+ Scadenza revisione annuale (–15 giorni) 
+ Fornitore 
+ Secondo promemoria con tono più urgente 
+
+ Sospensione automatica per mancato rinnovo 
+
+ Fornitore 
+
+ Comunicazione automatica di sospensione, istruzioni per la riattivazione 
+
+ 
+
+
+ 2.6 Sistema di v alutazione dei Fornitori 
+
+ Il sistema di valutazione permette ai referenti del Gruppo Solco che hanno collaborato direttamente con un fornitore di registrare un giudizio strutturato. Le valutazioni sono cumulative nel tempo e contribuiscono a un punteggio aggregato che fornisce un segnale di qualità rapido e comparabile tra fornitori della stessa categoria. 
+
+ 
+
+
+ Scheda di valutazione 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Punteggio complessivo 
+
+ Stelle 1–5 
+
+ Obbligatorio — sintetizza l'esperienza complessiva della collaborazione 
+
+ Qualità tecnica / contenutistica 
+
+ Stelle 1–5 
+
+ Facoltativo — da differenziare per docenti : ( qualità dei contenuti e della didattica ; ) e per aziende : ( qualità del servizio/prodotto consegnato ) 
+
+ Disponibilità 
+
+ Stelle 1–5 
+
+ Facoltativo — d isponibilità a confrontarsi e d a supportare le fas i di analisi fabbisogni e co-progettazione 
+
+ Flessibilità e 
+ problem 
+ solving 
+
+ Stelle 1–5 
+
+ Facoltativo — capacità di adattarsi a cambiamenti di scope o imprevisti 
+
+ Comunicazione 
+
+ Stelle 1–5 
+
+ Facoltativo — reattività e chiarezza nella comunicazione 
+
+ Rispetto dei tempi e delle consegne 
+
+ Stelle 1–5 
+
+ Facoltativo — puntualità nelle deliverable e nella comunicazione 
+
+ Rapporto qualità/prezzo 
+
+ Stelle 1–5 
+
+ Facoltativo — percezione dell'adeguatezza del costo rispetto al valore ricevuto 
+
+ Commento libero 
+
+ Testo max 600 car. 
+
+ Facoltativo ma fortemente consigliato — descrivere sinteticamente il contesto e l'esito della collaborazione 
+
+ Tipo di collaborazione 
+
+ Selezione (anche multipla) 
+
+ Obbligatorio — Docenza in aula; Docenza online; Progettazione formativa; Consulenza; Servizi; Fornitura prodotti; Altro 
+
+ Periodo di riferimento 
+
+ Mese e anno 
+
+ Es. 'Marzo 2025' — per contestualizzare la valutazione nel tempo 
+
+ Riferimento interno 
+
+ Testo libero (facoltativo) 
+
+ Es. nome del progetto, codice commessa, titolo del corso — per uso interno del Gruppo 
+
+ 
+
+ Regole operative: (1) Le valutazioni non sono modificabili una volta inserite; solo il Super Admin può annullarle con tracciamento nel log. (2) Il fornitore vede solo il punteggio aggregato e i commenti anonimi, non l'identità del valutatore. (3) Un valutatore può inserire una sola valutazione per fornitore per periodo di riferimento, per evitare duplicazioni. (4) Il sistema calcola automaticamente la media per ciascuna dimensione e la media complessiva, aggiornando in tempo reale il badge di punteggio nel profilo. 
+
+ 
+
+
+ 2.7 Ciclo di v ita del Profilo Fornitore 
+
+ Stato 
+
+ Descrizione e regole 
+
+ Gestito da 
+
+ In compilazione 
+
+ Il fornitore ha avviato la compilazione ma non ha ancora inviato la candidatura. Salvato come bozza automatica. Non visibile agli amministratori (eccetto Super Admin). Cancellato automaticamente dopo 90 giorni di inattività con notifica. 
+
+ Fornitore 
+
+ Invito inviato 
+
+ L'amministrazione ha inviato un link di invito. Il fornitore non ha ancora completato la registrazione. L'invito scade dopo 30 giorni (configurabile). 
+
+ Admin (monitoraggio) 
+
+ In attesa di revisione 
+
+ Candidatura inviata e protocollata. In coda per revisione. Visibile agli amministratori con accesso alla coda di revisione. Non visibile nei risultati di ricerca operativa. 
+
+ Admin 
+
+ Integrazione richiesta 
+
+ L'admin ha segnalato documenti mancanti o da correggere. Il fornitore deve intervenire entro la scadenza indicata (default: 15 giorni lavorativi). Trascorsa la scadenza senza risposta, viene inviato un sollecito. 
+
+ Fornitore (su input Admin) 
+
+ Attivo 
+
+ Profilo approvato e visibile nell'Albo. Accessibile nelle ricerche e consultabile dagli utenti autorizzati. Il fornitore può accedere all'area riservata e aggiornare i propri dati. 
+
+ Admin + Fornitore 
+
+ In aggiornamento 
+
+ Il fornitore ha richiesto modifiche sostanziali al profilo. Il profilo rimane visibile come Attivo ma con indicatore di aggiornamento in corso. Le modifiche sono soggette a riapprovazione. 
+
+ Fornitore → Admin 
+
+ Sospeso 
+
+ Temporaneamente non operativo. Non appare nelle ricerche operative. Cause: mancato rinnovo annuale, documenti scaduti, segnalazione dell'amministrazione, richiesta del fornitore. Il fornitore può riattivarsi. 
+
+ Admin 
+
+ Rigettato 
+
+ Candidatura non approvata. Il profilo non è visibile. Il fornitore non può presentare una nuova candidatura per 6 mesi (configurabile). I dati sono conservati per il periodo previsto dalla policy. 
+
+ Admin 
+
+ Cancellato 
+
+ Profilo rimosso definitivamente. I dati sono conservati per il periodo previsto dalla normativa (GDPR), poi eliminati. Non è possibile il ripristino. 
+
+ Admin (Super Admin) 
+
+ 
+
+ 
+ 
+
+ PARTE 3 — Albo A: Questionario Professionisti 
+
+ 
+
+
+ 3. Albo A — Questionario Professionisti 
+
+ Il questionario dell'Albo A è destinato a persone fisiche che esercitano la propria attività professionale in forma autonoma. Il questionario si articola in 5 sezioni sequenziali. La Sezione 3 si ramifica in due percorsi distinti (3A per docenti/formatori, 3B per tutti gli altri professionisti) sulla base della selezione effettuata nella Sezione 2. 
+
+ 
+
+ Percorso di compilazione: Sezione 1 — Dati anagrafici ▶ Sezione 2 — Tipologia professionale ▶ Sezione 3A (Docente/Formatore) oppure Sezione 3B (Altro professionista) ▶ Sezione 4 — Competenze trasversali ▶ Sezione 5 — Dichiarazioni e consensi 
+
+ 
+
+
+ 3.1 Sezione 1 — Dati a nagrafici 
+
+ Comune a tutti i professionisti. I campi contrassegnati come obbligatori devono essere compilati per poter procedere alla sezione successiva. 
+
+ 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Nome 
+
+ Testo — obbl. 
+
+ 
+
+ Cognome 
+
+ Testo — obbl. 
+
+ 
+
+ Data di nascita 
+
+ Data — obbl. 
+
+ Formato GG/MM/AAAA 
+
+ Luogo di nascita 
+
+ Testo — obbl. 
+
+ Comune e Paese se nato all'estero 
+
+ Codice Fiscale 
+
+ Testo 16 car. — obbl. 
+
+ Validazione automatica del formato; errore se non valido 
+
+ Partita IVA 
+
+ Testo 11 cifre — 
+ opz 
+ . 
+
+ Obbligatoria se in regime autonomo; validazione automatica 
+
+ Regime fiscale 
+
+ Selezione — obbl. 
+
+ R egime ordinario , R egime forfettario , R egime occasionale , D itta individuale , Altro (specificare) 
+
+ Indirizzo professionale / di residenza 
+
+ Testo — obbl. 
+
+ Via e numero civico 
+
+ Comune 
+
+ Testo — obbl. 
+
+ 
+
+ CAP 
+
+ Testo 5 cifre — obbl. 
+
+ Validazione automatica 
+
+ Provincia 
+
+ Selezione — obbl. 
+
+ Lista di tutte le province italiane 
+
+ Telefono principale 
+
+ Testo — obbl. 
+
+ Con prefisso internazionale (default: +39) 
+
+ Telefono secondario / WhatsApp 
+
+ Testo — 
+ opz 
+ . 
+
+ 
+
+ E-mail principale 
+
+ Email — obbl. 
+
+ Utilizzata per tutte le comunicazioni; 
+ pre 
+ -compilata se iscrizione da invito 
+
+ E-mail secondaria 
+
+ Email — 
+ opz 
+ . 
+
+ 
+
+ PEC 
+
+ Email — 
+ opz 
+ . 
+
+ 
+
+ Sito web / Portfolio online 
+
+ URL — 
+ opz 
+ . 
+
+ Validazione formato URL 
+
+ Profilo LinkedIn 
+
+ URL — 
+ opz 
+ . 
+
+ Es. linkedin.com/in/nome-cognome 
+
+ 
+
+
+ 3.2 Sezione 2 — Tipologia Professionale 
+
+ La selezione in questa sezione determina il percorso del questionario: scegliendo 'Docente / Formatore' il sistema mostrerà la Sezione 3A, specializzata e approfondita; scegliendo qualsiasi altra tipologia il sistema mostrerà la Sezione 3B. 
+
+ 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Tipologia principale 
+
+ Selezione singola — obbl. 
+
+ Docente / Formatore; Consulente HR / Sviluppo Organizzativo; Consulente del Lavoro; Commercialista / Dottore Commercialista; Avvocato / Consulente Legale; Consulente Digital & E-Learning; Consulente Finanza Agevolata e Bandi; Psicologo del Lavoro / Career Coach ; Orientatore professionale; Ricercatore / Valutatore; Altro professionista (specificare) 
+
+ Codice ATECO principale 
+
+ Testo / ricerca assistita — obbl. per 'Altro' 
+
+ Obbligatorio per chi seleziona 'Altro professionista'. 
+
+ Disponibilità a lavorare in più ruoli 
+
+ Selezione multipla — 
+ opz 
+ . 
+
+ Il professionista può indicare se si propone anche in altre tipologie oltre a quella principale (es. docente che offre anche consulenza HR). Questo arricchisce le possibilità di ricerca nel back-end. 
+
+ 
+
+
+ 3.3 Sezione 3A — Scheda Docente / Formatore 
+
+ Questa sezione è attivata per chi seleziona 'Docente / Formatore' nella Sezione 2. È la sezione più approfondita dell'intero questionario Albo A, in considerazione del ruolo centrale che i docenti e i formatori rivestono nel core business del Gruppo Solco. Si articola in sei sotto-sezioni tematiche. 
+
+ 
+
+
+ A — Istruzione e Abilitazioni 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Titolo di studio più elevato 
+
+ Selezione — obbl. 
+
+ Licenza media; Diploma di scuola secondaria superiore; Laurea triennale (L); Laurea magistrale / specialistica (LM/LS); Master universitario di I livello; Master universitario di II livello; Dottorato di Ricerca; Titolo equipollente estero 
+
+ Ambito / Indirizzo di studio 
+
+ Testo libero — obbl. 
+
+ Descrizione dell'indirizzo di studio, specificando disciplina principale. Es. 'Laurea Magistrale in Psicologia del lavoro e delle organizzazioni'; 'Master in 
+ Instructional 
+ Design e E-Learning' 
+
+ Anno di conseguimento 
+
+ Anno (AAAA) — obbl. 
+
+ 
+
+ Certificazioni e abilitazioni 
+
+ Testo libero — 
+ opz 
+ . 
+
+ (separato per Certificazioni e abilitazioni) 
+
+ E s. certificazioni linguistiche, ICT, Project Management, qualifica come docente in ambito SSL, iscrizione ad Albi professionali) . 
+
+ 
+
+
+ B — Aree Tematiche di Competenza 
+
+ Il docente seleziona tutti gli ambiti tematici in cui è in grado di erogare docenza o formazione. Per ogni ambito selezionato viene richiesto: (a) un campo di dettaglio con testo libero per specificare i sottotemi trattati, e (b) la fascia di anni di esperienza in quello specifico ambito. 
+
+ 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Ambiti di competenza (selezione multipla) 
+
+ 
+ Checkbox 
+ multiplo — obbl. almeno 1 
+
+ Selezione dalla lista completa degli ambiti (vedi sotto). Per ogni ambito selezionato si attivano automaticamente i due campi 'Specifica tematiche' e 'Anni di esperienza nell'ambito'. 
+
+ Specifica tematiche [per ogni ambito selezionato] 
+
+ Testo libero — obbl. se ambito selezionato 
+
+ Il docente indica i sottotemi specifici trattati all'interno dell'ambito. Es. per 'Soft skills': 'Comunicazione assertiva, gestione del conflitto, 
+ teamworking 
+ , public 
+ speaking 
+ '. 
+
+ Anni di esperienza di docenza nell'ambito [per ogni ambito] 
+
+ Selezione — obbl. se ambito selezionato 
+
+ Fasce: meno di 1 anno; 1–5 anni; 5–10 anni; 10–15 anni; oltre 15 anni 
+
+ 
+
+ Lista completa degli ambiti tematici (selezione multipla con specifica obbligatoria per ogni voce selezionata): Competenze digitali di base · Competenze digitali avanzate e specialistiche · Lingue straniere / Italiano per stranieri · Soft skills e life skills · Formazione outdoor / esperienziale · Human 
+ Resources 
+ · Formazione manageriale · Sistemi di gestione (ISO 9001, SA8000, ecc.) · Comunicazione, marketing e social media · Grafica e design · Salute e Sicurezza sul lavoro — obbligatoria · Salute e Sicurezza sul lavoro — non obbligatoria · Giuridico · Gestione Fondi Strutturali EU · Economico / finanziario · Commercio e vendita · Project Management · Green economy / sostenibilità ambientale · Sanità / socio-assistenziale · Logistica e trasporti · Agricoltura · Turismo ed enogastronomia · Formazione tecnico-professionale · Audiovisivo e spettacolo · Cultura e beni culturali · Formazione in contesti scolastici · Altro (specificare ambito e tematiche) 
+
+ 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Docenza per la Pubblica Amministrazione 
+
+ Selezione Sì/No — obbl. 
+
+ Indica se il docente ha esperienza di docenza per PA centrale (Ministeri, Agenzie) o PA locale (Comuni, Regioni, Province, ASL, ecc.). 
+
+ Ambiti di consulenza offerti (opzionale) 
+
+ 
+ Checkbox 
+ multiplo — 
+ opz 
+ . 
+
+ Oltre alla docenza, il professionista può indicare le tematiche su cui è in grado di offrire servizi di consulenza: Orientamento professionale; Accompagnamento al lavoro; Coaching; Assistenza tecnica ai programmi comunitari e nazionali; Business Plan e creazione d'impresa; Change management; Consulenza aziendale e di direzione; Gestione risorse umane; Direzione e coordinamento; Monitoraggio e valutazione; Progettazione fondi EU; Progettazione formativa; Rendicontazione; Ricerca sociale e di mercato; Tutoraggio 
+
+ Area territoriale di attività in presenza (Regione/i e Provincia/e) 
+
+ Testo libero 
+ opp 
+ . 
+ Checkbox 
+ multiplo — obbl. 
+
+ Il docente indica le province in cui è disponibile a operare in presenza. 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Lingue parlate (oltre all'italiano) e livello QCER 
+
+ 
+ Checkbox 
+ + livello 
+
+ Indicazione delle lingue parlate e del livello QCER 
+
+ Lingue straniere in cui può erogare docenza 
+
+ Testo libero — 
+ opz 
+ . 
+
+ Indicazione delle lingue in cui si può erogare docenza 
+
+ Strumenti digitali rilevanti 
+
+ Testo libero — 
+ opz 
+ . 
+
+ Es. Tool per la didattica (es. Mural, 
+ Mentimeter 
+ ), St rumenti per l’eroga zione didattica (es. MS Teams, Zoom), Tool di PM, Software gestionali, Software di grafica, Tool di data 
+ analysis 
+ / 
+ visualization 
+ , etc., 
+
+ Partecipazione a reti professionali o associazioni 
+
+ Testo libero — 
+ opz 
+ . 
+
+ Es. AIF, AIDP, AIFOS, Federmanager, reti di liberi professionisti, associazioni di categoria. Utile per il Gruppo per valutare il livello di aggiornamento del professionista. 
+
+
+ 
+
+
+ C — Disponibilità, Territorio e Condizioni Operative 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Disponibilità a trasferte fuori area 
+
+ Selezione — obbl. 
+
+ Sì, senza limitazioni (con rimborso spese concordato); Sì, solo in aree specifiche (indicare); Solo per progetti di lunga durata (>5 giornate); No 
+
+ Tariffa giornaliera (8h) — indicativa 
+
+ Range numerico € — 
+ opz 
+ . 
+
+ Informazione riservata, visibile solo agli utenti back-end con accesso completo. Non pubblicata nel profilo pubblico. Es. '300–400 €/giornata'. 
+
+ Tariffa oraria — indicativa 
+
+ Range numerico € — 
+ opz 
+ . 
+
+ Come sopra. 
+
+ 
+
+
+ D — Esperienze formative (fino a 5 esperienze, ultimi 5 anni) 
+
+ Il sistema permette di aggiungere fino a 5 schede di esperienza formativa, ognuna con i campi seguenti. Il blocco è dinamico: si parte da 1 e si aggiungono blocchi con pulsante 'Aggiungi un'altra esperienza'. I campi di ogni esperienza sono: 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Committente / Organizzazione 
+
+ Testo — obbl. per ogni esp. 
+
+ Nome dell'azienda, ente o istituzione per cui è stata erogata la formazione. Es. 'Regione Lombardia', 'FIAT S.p.A.', 'Comune di Milano' 
+
+ Settore del committente 
+
+ Testo / selezione — 
+ opz 
+ . 
+
+ Es. Pubblica Amministrazione; Manifatturiero; Terziario; No Profit; Formazione; Sanità; ecc. 
+
+ Tipo di intervento 
+
+ Testo + selezione — obbl. per ogni esp. 
+
+ Selezione: Corso in aula; FAD/E-learning; Blended; Coaching; Workshop/Laboratorio; Altro. Poi campo testo: titolo o descrizione sintetica del corso/intervento. 
+
+ Ambito tematico principale 
+
+ Selezione — obbl. 
+
+ Selezione dall'elenco degli ambiti già visto nella sezione B, coerente con le aree di competenza dichiarate. 
+
+ Periodo 
+
+ Date da–a (mese/anno) — obbl. 
+
+ 
+
+ Durata totale 
+
+ Ore o giorni — obbl. 
+
+ Es. '24 ore' oppure '3 giornate' 
+
+ N. partecipanti (indicativo) 
+
+ Numerico — 
+ opz 
+ . 
+
+ 
+
+ Modalità di erogazione 
+
+ Selezione — obbl. 
+
+ In presenza; Online sincrona; Online asincrona; Blended 
+
+ Finanziata (FSE, fondi interprofessionali, ecc.) 
+
+ Selezione Sì/No — 
+ opz 
+ . 
+
+ Se Sì: indicare il fondo o il programma. 
+
+ 
+
+
+ E — Referenze (fino a 2, non obbligatorio 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Nome e Cognome del referente 
+
+ Testo — 
+ opz 
+ . 
+
+ Persona che può attestare la collaborazione 
+
+ Ruolo e Organizzazione 
+
+ Testo — 
+ opz 
+ . 
+
+ 
+
+ E-mail o telefono 
+
+ Testo — 
+ opz 
+ . 
+
+ Il Gruppo Solco potrà contattare il referente per verifica. Informazione riservata. 
+
+ 
+
+
+ F — Allegati 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Curriculum Vitae aggiornato 
+
+ Upload PDF max 5 MB — 
+ obbl 
+ . 
+
+ Il CV deve essere datato e includere le principali esperienze di docenza e formazione. 
+
+ Certificazioni e 
+ attestat 
+ (non obbligatorio) i 
+
+ Upload PDF max 5 MB — 
+ opz 
+ . 
+
+ Un file per certificazione, oppure un unico PDF con tutti gli attestati. Alternativa: un archivio ZIP. 
+
+ 
+
+
+ 3.4 Sezione 3B — Scheda Altri Professionisti 
+
+ Sezione attivata per tutte le tipologie diverse da 'Docente / Formatore'. Si rivolge a d esempio a consulenti del lavoro, commercialisti, avvocati, psicologi, orientatori, ricercatori, esperti di finanza agevolata, consulenti digitali , e ogni altro professionista autonomo. 
+
+ 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Ordine professionale di appartenenza 
+
+ Testo — obbl. se iscritto 
+
+ Es. Ordine dei Consulenti del Lavoro (CPO), Consiglio Nazionale Forense (CNF), ODCEC, Ordine degli Psicologi, ecc. 
+
+ Titolo di studio più elevato 
+
+ Selezione — obbl. 
+
+ Licenza media; Diploma di scuola secondaria superiore; Laurea triennale (L); Laurea magistrale / specialistica (LM/LS); Master universitario di I livello; Master universitario di II livello; Dottorato di Ricerca; Titolo equipollente estero 
+
+ Ambito / Indirizzo di studio 
+
+ Testo libero — obbl. 
+
+ Descrizione dell'indirizzo di studio, specificando disciplina principale. Es. 'Laurea Magistrale in Psicologia del lavoro e delle organizzazioni'; 'Master in 
+ Instructional 
+ Design e E-Learning' 
+
+ Anni di esperienza professionale complessiva 
+
+ Selezione — obbl. 
+
+ Fasce: meno di 2 anni; 2–5 anni; 5–10 anni; 10–20 anni; oltre 20 anni 
+ Servizi offerti al Gruppo Solco 
+
+ Checkbox 
+ multiplo + campo libero — obbl. almeno 1 
+
+ (Consulente del Lavoro): Payroll e amministrazione; Gestione contratti e rapporti di lavoro; Contenzioso e controversie; Welfare aziendale; Applicazione CCNL; Somministrazione. (Commercialista): Contabilità e bilancio; Fiscalità d'impresa; Finanza agevolata e crediti d'imposta; Valutazione d'azienda. (Avvocato): Diritto del lavoro; Contrattualistica commerciale; Privacy e GDPR; Terzo settore; Diritto societario; Contenziosi. (Psicologo): 
+ Assessment 
+ individuale e di gruppo; Outplacement; Sviluppo leadership; Counseling. (Finanza agevolata): Bandi regionali e nazionali; Fondi strutturali europei; Credito d'imposta R&S e formazione; Finanza alternativa. (Orientatore): Bilancio di competenze; Counseling di carriera; Orientamento e Accompagnamento al lavoro. Altro: campo libero. 
+
+ Certificazioni e abilitazioni specifiche 
+
+ Testo libero + Upload — 
+ opz 
+ . 
+
+ Es. abilitazione professionale, specializzazioni post-laurea, master rilevanti. Allegare documentazione. 
+
+ Area territoriale di attività (province) 
+
+ Testo libero — obbl. 
+
+ Indicare le province o le aree geografiche in cui il professionista opera abitualmente e quelle in cui è disponibile a operare. 
+
+ Tariffa oraria indicativa (€) 
+
+ Range numerico — 
+ opz 
+ . 
+
+ Riservato. Per fini di budget interno. 
+
+ Curriculum Vitae 
+
+ Upload PDF max 5 MB — 
+ obbl 
+ . 
+
+ 
+
+ 
+
+
+ 3.6 Sezione 5 — Dichiarazioni e c onsensi 
+
+ Sezione finale obbligatoria. Tutte le voci contrassegnate come obbligatorie devono essere accettate per abilitare il pulsante 'Invia candidatura'. Ogni 
+ checkbox 
+ è accompagnato dal testo integrale della dichiarazione (o da un link al documento completo). La firma finale tramite OTP conferisce valore legale all'insieme delle dichiarazioni. 
+
+ 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Dichiarazione assenza condanne penali ostative 
+
+ 
+ Checkbox 
+ — obbl. 
+
+ Il professionista dichiara di non aver riportato condanne penali passate in giudicato per reati che costituirebbero causa ostativa all'esercizio dell'attività professionale o alla collaborazione con il Gruppo Solco. 
+
+ Dichiarazione assenza conflitti di interesse 
+
+ 
+ Checkbox 
+ — obbl. 
+
+ Dichiara l'assenza di rapporti di lavoro, parentela, interessi economici o qualsiasi altra relazione che possa configurare un conflitto di interesse con le società del Gruppo Solco al momento dell'iscrizione. 
+
+ Dichiarazione veridicità delle informazioni 
+
+ 
+ Checkbox 
+ — obbl. 
+
+ Tutte le informazioni, i documenti e le dichiarazioni fornite sono veritieri, aggiornati e completi. Il professionista si impegna a notificare al Gruppo Solco qualsiasi variazione rilevante entro 30 giorni. 
+
+ Accettazione Privacy Policy (GDPR) 
+
+ 
+ Checkbox 
+ con link — obbl. 
+
+ Presa visione e accettazione dell'informativa sul trattamento dei dati personali del Gruppo Solco ai sensi dell'art. 13 del Regolamento UE 2016/679. 
+
+ Consenso trattamento dati — gestione Albo 
+
+ 
+ Checkbox 
+ — obbl. 
+
+ Finalità: selezione, gestione e contrattualizzazione dei fornitori, inclusa la comunicazione dei dati tra le società del Gruppo. 
+
+ Consenso trattamento dati — comunicazioni commerciali 
+
+ 
+ Checkbox 
+ — 
+ opz 
+ . (facoltativo) 
+
+ Finalità: invio di newsletter, aggiornamenti su opportunità di collaborazione e comunicazioni promozionali del Gruppo Solco. 
+
+ Accettazione Codice Etico Gruppo Solco 
+
+ 
+ Checkbox 
+ con link — obbl. 
+
+ Impegno al rispetto dei principi etici, comportamentali e deontologici descritti nel Codice Etico del Gruppo Solco, per tutta la durata del rapporto con il Gruppo. 
+
+ Accettazione standard qualità, ambiente e sicurezza 
+
+ 
+ Checkbox 
+ con link — obbl. 
+
+ Conformità agli standard del Gruppo in materia di gestione della qualità, tutela dell'ambiente e salute e sicurezza sul lavoro, nei limiti applicabili all'attività del professionista. 
+
+ Dichiarazione conformità 
+ D.Lgs. 
+ 81/2008 
+
+ 
+ Checkbox 
+ — obbl. per docenti in presenza 
+
+ Il professionista dichiara di essere a conoscenza degli obblighi previsti dal 
+ D.Lgs. 
+ 81/2008 in materia di salute e sicurezza nei luoghi di lavoro e di adempiervi per quanto di competenza. 
+
+ Firma (OTP via e-mail) 
+
+ Campo firma — obbl. 
+
+ Il sistema invia un codice OTP all'indirizzo e-mail del professionista. L'inserimento del codice sottoscrive digitalmente tutte le dichiarazioni rese nel questionario. 
+
+ 
+
+ 
+ 
+
+ PARTE 4 — Albo B: Questionario Aziende 
+
+ 
+
+
+ 4. Albo B — Questionario Aziende 
+
+ Il questionario dell'Albo B è rivolto a persone giuridiche di qualsiasi forma: società di capitali o persone, cooperative, consorzi, fondazioni, associazioni, studi associati, enti del terzo settore e qualsiasi altra organizzazione. Il questionario è compilato dal legale rappresentante o da un suo delegato formalmente autorizzato. 
+
+ 
+
+ Percorso: Sezione 1 — Dati aziendali ▶ Sezione 2 — Struttura e dimensione ▶ Sezione 3 — Tipologia e servizi offerti ▶ Sezione 4 — Capacità, referenze e certificazioni ▶ Sezione 5 — Dichiarazioni e conformità 
+
+ 
+
+
+ 4.1 Sezione 1 — Dati Aziendali 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Ragione sociale 
+
+ Testo — obbl. 
+
+ 
+
+ Forma giuridica 
+
+ Selezione — obbl. 
+
+ SRL / SRLS / SPA / SAS / SNC / SS / Cooperativa sociale / Cooperativa non sociale / Consorzio / Fondazione / Associazione / APS / ODV / Impresa sociale / Studio associato / Ditta individuale / Altro 
+
+ Partita IVA 
+
+ Testo 11 cifre — obbl. 
+
+ Validazione automatica del formato 
+
+ Codice Fiscale (se diverso dalla P.IVA) 
+
+ Testo — 
+ opz 
+ . 
+
+ Obbligatorio per enti non commerciali che hanno CF diverso dalla P.IVA 
+
+ Numero REA 
+
+ Testo — obbl. 
+
+ Registro Economia e Attività — es. MI-1234567 
+
+ Camera di Commercio (CCIAA) di iscrizione 
+
+ Selezione provincia — obbl. 
+
+ 
+
+ Data di costituzione 
+
+ Data (mese/anno) — obbl. 
+
+ 
+
+ Sede legale — Via e n. civico 
+
+ Testo — obbl. 
+
+ 
+
+ Comune 
+
+ Testo — obbl. 
+
+ 
+
+ CAP 
+
+ Testo 5 cifre — obbl. 
+
+ 
+
+ Provincia 
+
+ Selezione — obbl. 
+
+ 
+
+ Sede operativa principale (se diversa) 
+
+ Testo — 
+ opz 
+ . 
+
+ Indirizzo completo della sede operativa principale 
+
+ E-mail istituzionale 
+
+ Email — obbl. 
+
+ 
+
+ PEC 
+
+ Email — obbl. 
+
+ 
+
+ Telefono principale 
+
+ Testo — obbl. 
+
+ 
+
+ Sito web aziendale 
+
+ URL — 
+ opz 
+ . 
+
+ 
+
+ Legale Rappresentante — Nome e Cognome 
+
+ Testo — obbl. 
+
+ 
+
+ Legale Rappresentante — Codice Fiscale 
+
+ Testo — obbl. 
+
+ 
+
+ Legale Rappresentante — Ruolo 
+
+ Testo — obbl. 
+
+ Es. Amministratore Unico, Presidente 
+ CdA 
+ , ecc. 
+
+ Referente operativo per Gruppo Solco 
+
+ Nome, ruolo, e-mail, tel. — obbl. 
+
+ La persona di contatto per la gestione quotidiana del rapporto con il Gruppo. Può coincidere con il legale rappresentante. 
+
+ 
+
+
+ 4.2 Sezione 2 — Struttura, d imensione e s ettore 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Numero dipendenti (attuale) 
+
+ Selezione fasce — obbl. 
+
+ Solo il titolare (ditta individuale); 2–5; 6–15; 16–50; 51–250; Oltre 250 
+
+ Fatturato ultimo esercizio chiuso 
+
+ Selezione fasce — 
+ opz 
+ . 
+
+ Sotto 100.000 €; 100.000–500.000 €; 500.000–2.000.000 €; 2.000.000–10.000.000 €; Oltre 10.000.000 €; Preferisco non indicarlo 
+
+ Codice ATECO principale 
+
+ Testo / ricerca assistita — obbl. 
+
+ Con 
+ autocompletamento 
+ per parola chiave o codice 
+
+ Codici ATECO secondari 
+
+ Testo multiplo — 
+ opz 
+ . 
+
+ Fino a 3 codici aggiuntivi 
+
+ Regioni di operatività 
+
+ 
+ Checkbox 
+ multiplo — obbl. 
+
+ Selezione di tutte le regioni italiane in cui l'azienda opera in modo stabile (non occasionale) 
+
+ Ente accreditato per la formazione (Regionale) 
+
+ Selezione Sì/No — obbl. 
+
+ Se Sì: selezionare la/le regione/i, il tipo di accreditamento (formazione professionale / formazione continua / formazione superiore / servizi al lavoro). Allegare provvedimento. 
+
+ Tipo di organizzazione (Terzo Settore) 
+
+ Selezione — obbl. per enti non profit 
+
+ ONLUS (regime transitorio); APS (Associazione di Promozione Sociale); ODV (Organizzazione di Volontariato); Impresa Sociale; Cooperativa Sociale (tipo A / tipo B / tipo A+B); Ente Filantropico; Rete Associativa; Altro ETS 
+
+ Numero iscrizione Registro Unico Terzo Settore (RUNTS) 
+
+ Testo — 
+ opz 
+ . per Terzo Settore 
+
+ Se iscritti al RUNTS: indicare numero e sezione 
+
+ 
+
+
+ 4.3 Sezione 3 — Tipologia e s ervizi o fferti 
+
+ Il fornitore seleziona la/le categoria/e di servizi che è in grado di erogare per il Gruppo Solco. Per ogni categoria selezionata viene richiesta una descrizione sintetica (max 400 caratteri). La selezione di almeno una categoria è obbligatoria per completare l'iscrizione. 
+
+ 
+
+
+ Categoria A — Formazione, d idattica e c ontenuti 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Progettazione didattica / 
+ Instructional 
+ Design 
+
+ 
+ Checkbox 
+ 
+
+ Sviluppo di piani formativi, curricula, 
+ syllabi 
+ e architetture didattiche per corsi in presenza o online 
+
+ Erogazione formazione in aula (in presenza) 
+
+ 
+ Checkbox 
+ 
+
+ Servizi di docenza e facilitazione in aula, inclusa la gestione logistica d'aula 
+
+ Formazione online sincrona (webinar, videoconferenza) 
+
+ 
+ Checkbox 
+ 
+
+ Organizzazione e gestione di sessioni formative live su piattaforme digitali 
+
+ Produzione contenuti e-learning (SCORM, video, H5P) 
+
+ 
+ Checkbox 
+ 
+
+ Sviluppo di contenuti digitali interattivi per piattaforme LMS 
+
+ Sviluppo, implementazione e gestione piattaforme LMS 
+
+ 
+ Checkbox 
+ 
+
+ Configurazione, personalizzazione e manutenzione di Learning Management System 
+
+ Progettazione e gestione corsi finanziati (FSE, fondi interprofessionali) 
+
+ 
+ Checkbox 
+ 
+
+ Predisposizione di candidature, gestione procedurale e rendicontazione 
+
+ Formazione per disoccupati / politiche attive del lavoro 
+
+ 
+ Checkbox 
+ 
+
+ Progettazione ed erogazione di percorsi per soggetti in cerca di occupazione, in collaborazione con centri per l'impiego o enti pubblici 
+
+ 
+ Assessment 
+ e testing delle competenze 
+
+ 
+ Checkbox 
+ 
+
+ Strumenti e servizi per la valutazione delle competenze ( 
+ assessment 
+ center, test, simulazioni) 
+
+ Simulatori, realtà virtuale e aumentata per training 
+
+ 
+ Checkbox 
+ 
+
+ Sviluppo di ambienti simulati per la formazione in sicurezza, tecnica o comportamentale 
+
+ Traduzione e localizzazione di contenuti formativi 
+
+ 
+ Checkbox 
+ 
+
+ Adattamento di materiali didattici in altre lingue 
+
+ Descrizione sintetica (obbligatoria se almeno una voce selezionata) 
+
+ Testo max 400 car. 
+
+ 
+
+ 
+
+
+ Categoria B — HR, Lavoro e Organizzazione 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Ricerca e selezione del personale 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Somministrazione di lavoro (APL autorizzata) 
+
+ 
+ Checkbox 
+ 
+
+ Obbligatorio indicare il numero di autorizzazione ministeriale 
+
+ Outplacement e ricollocazione professionale 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Payroll e amministrazione del personale 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Welfare aziendale — piattaforme e servizi 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Consulenza organizzativa HR / 
+ change 
+ management 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Sviluppo organizzativo e talent management 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Coaching e sviluppo manageriale (strutturato) 
+
+ 
+ Checkbox 
+ 
+
+ In quanto servizio di azienda, distinto dal coaching individuale dell'Albo A 
+
+ Descrizione sintetica 
+
+ Testo max 400 car. 
+
+ 
+
+ 
+
+
+ Categoria C — Tecnologia e d igitale 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Sviluppo software / applicazioni custom 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Sistemi informativi HR (HRIS, ATS, LMS, TMS) 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Digital marketing, SEO, comunicazione digitale 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Cybersecurity e protezione dei dati 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ UX/UI design, prototipazione e ricerca utente 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Analisi dati, business intelligence e dashboard 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ 
+ Infrastrutture 
+ cloud, IT managed services, help desk 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Intelligenza artificiale applicata e automazione 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Descrizione sintetica 
+
+ Testo max 400 car. 
+
+ 
+
+ 
+
+
+ Categoria D — Consulenza, p rofessioni e c ompliance 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Consulenza del lavoro (studio associato o 
+ srl 
+ ) 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Consulenza fiscale, tributaria e contabile 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Consulenza legale e studio legale 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Finanza agevolata, bandi e contributi pubblici 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Consulenza di direzione e sviluppo strategico 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Audit, revisione e sistemi di gestione qualità 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Compliance ( 
+ D.Lgs. 
+ 231/01, GDPR, ESG, B Corp) 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Servizi per il Terzo Settore (governance, rendicontazione, bilancio sociale) 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Ricerca sociale, valutazione di impatto, monitoraggio 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Descrizione sintetica 
+
+ Testo max 400 car. 
+
+ 
+
+ 
+
+
+ Categoria E — Servizi g enerali e o perativi 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Fornitura materiali didattici, editoriali e tipografici 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Comunicazione, grafica, produzione video e foto 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Organizzazione eventi, congressi e fiere 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Logistica, trasferte e travel management 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Gestione sedi e facility management 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Catering, ristorazione e 
+ hospitality 
+ 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Noleggio attrezzature (audio/video, allestimenti) 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Servizi di segreteria, reception e back office 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Traduzioni e interpretariato 
+
+ 
+ Checkbox 
+ 
+
+ 
+
+ Descrizione sintetica 
+
+ Testo max 400 car. 
+
+ 
+
+ 
+
+
+ Certificazioni e accreditamenti 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ ISO 9001 — Qualità 
+
+ Selezione Sì/No 
+
+ Se Sì: ente certificatore, scadenza, Upload PDF certificato 
+
+ ISO 14001 — Ambiente 
+
+ Selezione Sì/No 
+
+ Se Sì: come sopra 
+
+ ISO 45001 / OHSAS 18001 — Salute e Sicurezza 
+
+ Selezione Sì/No 
+
+ Se Sì: come sopra 
+
+ SA8000 — Responsabilità Sociale 
+
+ Selezione Sì/No 
+
+ Se Sì: come sopra 
+
+ ISO 27001 — Sicurezza delle informazioni 
+
+ Selezione Sì/No 
+
+ Rilevante per fornitori di servizi IT 
+
+ Altre certificazioni di settore 
+
+ Testo + Upload — 
+ opz 
+ . 
+
+ Nome certificazione, ente rilasciante, anno, scadenza 
+
+ Accreditamento regionale per la formazione 
+
+ Selezione Sì/No 
+
+ Se Sì: regioni e tipo (professionale / continua / superiore). Upload provvedimento. 
+
+ Accreditamento servizi al lavoro (ANPAL / Regioni) 
+
+ Selezione Sì/No 
+
+ Se Sì: allegare provvedimento autorizzatorio 
+
+ 
+
+
+ Allegati aziendali 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Visura camerale ordinaria 
+
+ Upload PDF max 5 MB — 
+ obbl 
+ . 
+
+ Data di emissione non anteriore a 6 mesi rispetto alla data di iscrizione 
+
+ Company 
+ profile 
+ / presentazione aziendale (facoltativo) 
+
+ Upload PDF max 10 MB — consigliato 
+
+ 
+
+ DURC — Documento Unico Regolarità Contributiva 
+
+ Upload PDF max 5 MB — 
+ obbl 
+ . 
+
+ Deve essere in corso di validità (validità 120 giorni dal rilascio) 
+
+ Certificati ISO e accreditamenti 
+
+ Upload PDF — un file per certificato 
+
+ Per ogni certificazione o accreditamento dichiarato nella sezione precedente 
+
+ 
+
+
+ 4.5 Sezione 5 — Dichiarazioni e c onformità 
+
+ Tutte le dichiarazioni sono obbligatorie per completare l'iscrizione, salvo laddove indicato come facoltativo. Sono rese ai sensi del D.P.R. 445/2000 (valore di dichiarazione sostitutiva di atto notorio) e firmate dal legale rappresentante o dal suo delegato. 
+
+ 
+
+ Campo / Voce 
+
+ Tipo risposta 
+
+ Note e valori possibili 
+
+ Dichiarazione antimafia (art. 67 
+ D.Lgs. 
+ 159/2011) 
+
+ 
+ Checkbox 
+ — obbl. 
+
+ Il legale rappresentante dichiara l'insussistenza di misure di prevenzione antimafia a carico dell'azienda, degli amministratori e dei soci di maggioranza. 
+
+ Dichiarazione ex 
+ D.Lgs. 
+ 231/01 
+
+ 
+ Checkbox 
+ — obbl. 
+
+ Assenza di condanne o procedimenti penali a carico degli organi apicali per i reati previsti dal 
+ D.Lgs. 
+ 231/2001. 
+
+ Adozione Modello Organizzativo ex 
+ D.Lgs. 
+ 231/01 
+
+ Selezione Sì/No — obbl. 
+
+ Se Sì: indicare se il modello è stato adottato, approvato e aggiornato nell'ultimo biennio. 
+
+ Regolarità contributiva e fiscale 
+
+ 
+ Checkbox 
+ — obbl. 
+
+ Confermata dal DURC allegato e dalla piena regolarità fiscale dell'azienda alla data di iscrizione. 
+
+ Conformità 
+ D.Lgs. 
+ 81/2008 — Salute e Sicurezza 
+
+ 
+ Checkbox 
+ — obbl. 
+
+ L'azienda adempie a tutti gli obblighi previsti in materia di salute e sicurezza dei lavoratori. 
+
+ Conformità GDPR e nomina DPO (se applicabile) 
+
+ 
+ Checkbox 
+ — obbl. 
+
+ L'azienda tratta i dati personali in conformità al Regolamento UE 2016/679. Se il DPO è obbligatorio: indicarne nome e contatto. 
+
+ Dichiarazione veridicità delle informazioni 
+
+ 
+ Checkbox 
+ — obbl. 
+
+ Il legale rappresentante certifica la completezza, la veridicità e l'aggiornamento di tutte le informazioni e i documenti forniti. 
+
+ Accettazione Privacy Policy Gruppo Solco 
+
+ 
+ Checkbox 
+ con link — obbl. 
+
+ 
+
+ Accettazione Codice Etico Gruppo Solco 
+
+ 
+ Checkbox 
+ con link — obbl. 
+
+ 
+
+ Accettazione standard qualità, ambiente e sicurezza 
+
+ 
+ Checkbox 
+ con link — obbl. 
+
+ 
+
+ Consenso trattamento dati — gestione Albo 
+
+ 
+ Checkbox 
+ — obbl. 
+
+ 
+
+ Consenso trattamento dati — comunicazioni commerciali 
+
+ 
+ Checkbox 
+ — 
+ opz 
+ . 
+
+ 
+
+ Firma del legale rappresentante (OTP) 
+
+ Campo firma — obbl. 
+
+ 
+
+ 
+
+ 
+ 
+
+ PARTE 5 — Note Operative, Governance e Sviluppi 
+
+ 
+
+
+ 5. Note Operative e Linee Guida 
+
+
+ 5.1 Revisione Annuale e Aggiornamento dei Profili 
+
+ Tutti i profili attivi sono soggetti a revisione annuale decorrente dalla data di approvazione dell'iscrizione. Il processo di rinnovo è il seguente: il sistema invia una notifica automatica 60 giorni prima della scadenza, con un secondo promemoria a 15 giorni. Il fornitore accede alla propria area riservata, verifica e aggiorna i propri dati (i campi sono 
+ pre 
+ -compilati con i valori esistenti), carica i documenti aggiornati (visura, DURC, eventuali nuove certificazioni) e invia nuovamente le dichiarazioni. L'aggiornamento è soggetto a revisione amministrativa, che può essere agevolata rispetto alla prima iscrizione. In caso di mancato rinnovo, il profilo viene automaticamente sospeso il giorno della scadenza, con notifica al fornitore. 
+
+ 
+
+
+ 5.2 Privacy e Trattamento dei Dati (GDPR) 
+
+ Il Gruppo Solco è Titolare del trattamento dei dati personali raccolti attraverso l'Albo Fornitori Digitale. Il trattamento avviene sulla base del legittimo interesse al procurement e delle finalità di gestione contrattuale (art. 6 GDPR). I dati sono conservati per tutta la durata dell'iscrizione e per un periodo massimo di 5 anni dalla cancellazione del profilo, salvo obblighi di conservazione più lunghi previsti dalla normativa fiscale e del lavoro. I dati sensibili sono accessibili solo agli utenti back-end autorizzati con permessi specifici. Il fornitore può esercitare i diritti di accesso, rettifica, cancellazione, portabilità e opposizione scrivendo al DPO del Gruppo Solco. 
+
+ 
+
+
+ 5.3 Codice Etico e Standard del Gruppo 
+
+ L'iscrizione all'Albo e ogni successiva collaborazione implicano l'accettazione incondizionata del Codice Etico del Gruppo Solco. Il Codice disciplina i principi di correttezza, trasparenza, non discriminazione, rispetto delle persone, tutela dell'ambiente e responsabilità sociale che il Gruppo si aspetta da tutti i propri partner. La violazione — accertata o documentata — di questi principi può comportare la sospensione immediata del profilo, la risoluzione dei contratti in corso e la segnalazione alle autorità competenti, a seconda della gravità. 
+
+ 
+
+
+ 5.4 Roadmap e Sviluppi Futuri 
+
+ Il presente documento rappresenta la versione 1.0 del progetto Albo Fornitori Digitale del Gruppo Solco. Sono previsti i seguenti sviluppi, da pianificare in fasi successive: 
+
+
+ 
+ Mockup 
+ delle interfacce applicative (front-end e back-end): la seconda fase del progetto prevede la realizzazione di 
+ wireframe 
+ e 
+ mockup 
+ ad alta fedeltà di tutte le schermate descritte in questo documento (pagina pubblica, 
+ wizard 
+ di iscrizione, area riservata fornitore, dashboard back-end, scheda profilo, form di valutazione, lista fornitori con filtri). 
+
+
+ Specifiche tecniche e RFP: sulla base dei 
+ mockup 
+ approvati, definizione dei requisiti tecnici per lo sviluppo o la configurazione della piattaforma. 
+
+
+ Integrazione con sistemi gestionali: collegamento con il sistema di gestione contratti del Gruppo per il riconoscimento automatico dei fornitori già iscritti all'Albo nelle nuove commesse. 
+
+
+ Integrazione con piattaforme LMS: riconoscimento automatico dei formatori attivi nelle piattaforme di e-learning del Gruppo (es. 
+ pre 
+ -compilazione del profilo docente dalla piattaforma). 
+
+
+ Sistema di qualificazione per livelli: introduzione di un sistema di ranking (es. Bronzo / Argento / Oro) basato su punteggio di valutazione aggregato, numero di collaborazioni, completezza del profilo e aggiornamento regolare dei documenti. 
+
+
+ Portale fornitore avanzato: accesso dello storico delle commesse, visualizzazione delle fatture emesse, notifiche di nuove opportunità di collaborazione. 
+
+
+ App mobile per il back-end: versione semplificata per smartphone rivolta ai valutatori (inserimento valutazioni immediato dopo una collaborazione) e ai revisori (presa in carico e approvazione rapida delle candidature). 
+
+ 
+
+ Documento redatto per il Direttore Generale del Gruppo Solco — Versione 1.0 — 2025. Destinato a uso interno per la progettazione del sistema Albo Fornitori Digitale. I contenuti sono da considerarsi come proposta di lavoro soggetta a revisione e approvazione da parte del management del Gruppo.
+
+
+--------------------------------------------------------------------------------
+NOTE DI IMPLEMENTAZIONE — aggiornamento aprile 2025
+(Questa sezione descrive ciò che è stato implementato nel sistema e distingue
+ cosa era richiesto dal documento originale da cosa è stato aggiunto in fase
+ di sviluppo per colmare lacune operative non coperte dai requisiti.)
+--------------------------------------------------------------------------------
+
+A. MECCANISMO DI VERIFICA/PASSAGGIO REVISORE → RESPONSABILE
+   (NON presente nei requisiti originali — aggiunto in fase di sviluppo)
+
+   Il documento descriveva i ruoli di Revisore e Responsabile Albo ma non
+   specificava alcun meccanismo formale di handoff tra i due. In assenza di
+   tale meccanismo, il Responsabile non aveva modo di sapere se e quando un
+   Revisore aveva esaminato i documenti di una candidatura.
+
+   È stato implementato il seguente flusso aggiuntivo:
+
+   1. Nuovo stato workflow: READY_FOR_DECISION
+      Aggiunto tra WAITING_SUPPLIER_RESPONSE e DECIDED. Una pratica assume
+      questo stato quando un Revisore (o Responsabile/SuperAdmin) completa la
+      verifica documentale.
+
+   2. Campi di verifica sulla review case:
+      - verified_by_user_id: chi ha effettuato la verifica
+      - verified_at: data/ora della verifica
+      - verification_note: nota opzionale (max 1000 caratteri)
+      Questi campi sono persistiti con migrazione Flyway V18.
+
+   3. Endpoint backend: POST /api/v2/reviews/{reviewCaseId}/verify
+      Accessibile a SUPER_ADMIN, RESPONSABILE_ALBO, REVISORE.
+      Valida che la pratica non sia già finalizzata o in attesa di risposta
+      fornitore, poi imposta lo stato READY_FOR_DECISION.
+
+   4. UI — Pagina dettaglio pratica (AdminApplicationCasePage):
+      - Banner verde "Verificata da [nome] il [data]" quando la verifica
+        è completata, visibile a tutti i ruoli.
+      - Banner giallo di avviso "non ancora verificata da un revisore" per
+        Responsabile Albo e SuperAdmin quando la pratica non è verificata
+        e non è ancora finalizzata. Il Responsabile può comunque procedere
+        (approccio advisory, non bloccante).
+      - Pulsante "Completa verifica" visibile a Revisore, Responsabile Albo
+        e SuperAdmin, con modale che consente di scegliere l'esito
+        (Conforme / Conforme con riserve) e aggiungere una nota.
+
+   5. UI — Coda candidature (AdminQueuePage):
+      - Nuovo tab "Da decidere" che filtra le pratiche in stato
+        READY_FOR_DECISION.
+      - Badge "Verificata" sulle righe della coda.
+      - Nuovo KPI tile "Da decidere" nella barra superiore.
+
+   Scelta progettuale (Opzione B — advisory):
+   Il Responsabile Albo NON è bloccato dal decidere su pratiche non ancora
+   verificate. Può farlo liberamente, ma viene avvisato con un banner
+   giallo. Questo approccio preserva la flessibilità operativa mantenendo
+   tracciabilità del processo di verifica.
+
+B. NAVIGAZIONE LATERALE PER RUOLO
+   (NON presente nei requisiti originali — aggiunto in fase di sviluppo)
+
+   Il documento descriveva i ruoli e i loro permessi ma non specificava
+   quali voci del menu laterale dovessero essere visibili per ciascun ruolo.
+
+   È stata implementata la seguente visibilità:
+   - VIEWER: Dashboard, Fornitori (Albo A), Aziende (Albo B)
+   - REVISORE: + Candidature, Valutazioni
+   - RESPONSABILE_ALBO: + Inviti, Report
+   - SUPER_ADMIN: + Impostazioni (gestione utenti e ruoli)
+
+--------------------------------------------------------------------------------
+
+ 
+
+ 
+

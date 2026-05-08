@@ -1,0 +1,1 @@
+const i="Formato ATECO non valido. Usa solo numeri e punti, es. 85.42.09.",e=/^\d{2}(?:\.\d{1,2})?(?:\.\d{1,2})?$/;function t(o){return o.trim().replace(",",".")}function r(o){const n=t(o);return n.length===0||e.test(n)}export{i as A,r as i,t as n};

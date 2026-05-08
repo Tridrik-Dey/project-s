@@ -1,0 +1,85 @@
+server:
+  port: 8081
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  datasource:
+    url: jdbc:postgresql://localhost:5433/supplier_platform
+    username: supplier_admin
+    password: supplier_pass
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 28
+    locations: classpath:db/migration
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:${SPRING_MAIL_USERNAME:}}
+    password: ${MAIL_PASSWORD:${SPRING_MAIL_PASSWORD:}}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+app:
+  frontend:
+    base-url: ${APP_FRONTEND_BASE_URL:http://127.0.0.1:5173}
+  mail:
+    fail-fast: ${MAIL_FAIL_FAST:false}
+    retry:
+      max-attempts: ${MAIL_RETRY_MAX_ATTEMPTS:3}
+      backoff-ms: ${MAIL_RETRY_BACKOFF_MS:500}
+  jwt:
+    secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    expiration-ms: 86400000
+  file:
+    upload-dir: ${FILE_UPLOAD_DIR:./uploads}
+  reminders:
+    invite-expiry:
+      enabled: ${INVITE_EXPIRY_REMINDER_ENABLED:true}
+      days-before: ${INVITE_EXPIRY_REMINDER_DAYS_BEFORE:7,1}
+      cron: ${INVITE_EXPIRY_REMINDER_CRON:0 0 9 * * *}
+    document-expiry:
+      days-before: 30
+      cron: "0 * * * * *"
+      mail:
+        enabled: ${REMINDER_MAIL_ENABLED:false}
+        from: ${REMINDER_MAIL_FROM:no-reply@supplierplatform.local}
+  reviews:
+    status-mail:
+      enabled: ${REVIEW_STATUS_MAIL_ENABLED:true}
+      from: ${REVIEW_STATUS_MAIL_FROM:${spring.mail.username:no-reply@supplierplatform.local}}
+  support:
+    contact:
+      enabled: ${SUPPORT_CONTACT_ENABLED:true}
+      to: ${SUPPORT_CONTACT_TO:${spring.mail.username:}}
+      from: ${SUPPORT_CONTACT_FROM:${app.reviews.status-mail.from:${spring.mail.username:no-reply@supplierplatform.local}}}
+  features:
+    revamp:
+      read-enabled: ${FEATURE_REVAMP_READ_ENABLED:true}
+      write-enabled: ${FEATURE_REVAMP_WRITE_ENABLED:true}
+      alias-enabled: ${FEATURE_REVAMP_ALIAS_ENABLED:true}
+      new-wizard-ab: ${FEATURE_NEW_WIZARD_AB:true}
+      admin-v2: ${FEATURE_ADMIN_V2:true}
+      evaluation-v2: ${FEATURE_EVALUATION_V2:true}
+      renewal-v2: ${FEATURE_RENEWAL_V2:true}
+  revamp:
+    draft-cleanup:
+      enabled: ${REVAMP_DRAFT_CLEANUP_ENABLED:true}
+      max-age-days: ${REVAMP_DRAFT_CLEANUP_MAX_AGE_DAYS:30}
+      cron: ${REVAMP_DRAFT_CLEANUP_CRON:0 30 2 * * *}

@@ -1,0 +1,1 @@
+const e="revamp_onboarding_context";function t(n){typeof window>"u"||window.sessionStorage.setItem(e,JSON.stringify(n))}function o(){if(typeof window>"u")return null;const n=window.sessionStorage.getItem(e);if(!n)return null;try{return JSON.parse(n)}catch{return null}}function r(){typeof window>"u"||window.sessionStorage.removeItem(e)}export{r as c,o as l,t as s};

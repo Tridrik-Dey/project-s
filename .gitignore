@@ -1,0 +1,24 @@
+﻿# Credentials / secrets
+backend/smtp-config.json
+backend/mvn-settings-local.xml
+
+# Maven
+target/
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.classpath
+*.project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

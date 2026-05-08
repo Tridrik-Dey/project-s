@@ -1,0 +1,2 @@
+127.0.0.1 localhost
+142.251.127.109 smtp.gmail.com
