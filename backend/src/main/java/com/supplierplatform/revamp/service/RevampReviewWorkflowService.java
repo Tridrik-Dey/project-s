@@ -13,6 +13,7 @@ import com.supplierplatform.revamp.enums.ReviewCaseStatus;
 import com.supplierplatform.revamp.enums.ReviewDecision;
 import com.supplierplatform.revamp.enums.VerificationOutcome;
 import com.supplierplatform.revamp.mapper.RevampReviewCaseMapper;
+import com.supplierplatform.revamp.service.RevampFieldChangeRequestService;
 import com.supplierplatform.revamp.model.RevampApplication;
 import com.supplierplatform.revamp.model.RevampIntegrationRequest;
 import com.supplierplatform.revamp.model.RevampReviewCase;
@@ -45,6 +46,7 @@ public class RevampReviewWorkflowService {
     private final RevampGovernanceAuthorizationService governanceAuthorizationService;
     private final RevampProfileProjectionService profileProjectionService;
     private final RevampIntegrationRequestMailService integrationRequestMailService;
+    private final RevampFieldChangeRequestService fieldChangeRequestService;
     private final ObjectMapper objectMapper;
     private static final List<ReviewCaseStatus> FINAL_STATUSES = List.of(ReviewCaseStatus.DECIDED, ReviewCaseStatus.CLOSED);
 
@@ -341,6 +343,7 @@ public class RevampReviewWorkflowService {
             profileProjectionService.projectApprovedApplication(application.getId());
         }
         RevampReviewCase savedCase = reviewCaseRepository.save(reviewCase);
+        fieldChangeRequestService.handleReviewDecision(savedCase.getId(), decision, decidedByUserId);
         String actorRole = resolveActorGovernanceRole(decidedByUserId);
         auditService.append(new RevampAuditEventInputDto(
                 "revamp.review.decided",

@@ -10,6 +10,7 @@ public enum ApplicationStatus {
     REJECTED,
     SUSPENDED,
     RENEWAL_DUE,
-    ARCHIVED
+    ARCHIVED,
+    FIELD_CHANGE_IN_PROGRESS
 }
 

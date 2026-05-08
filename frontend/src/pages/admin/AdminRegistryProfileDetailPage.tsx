@@ -5,6 +5,7 @@ import {
   Award,
   Building2,
   Clock,
+  FileEdit,
   FileText,
   FilePlus,
   History,
@@ -32,6 +33,12 @@ import {
 } from "../../api/adminProfileDetailApi";
 import { getAdminEvaluationSummary, type AdminEvaluationAggregate } from "../../api/adminEvaluationApi";
 import { API_BASE_URL, HttpError } from "../../api/http";
+import {
+  listFieldChangeRequests,
+  adminUnlockSection,
+  adminRejectChangeRequest,
+  type FieldChangeRequest,
+} from "../../api/fieldChangeRequestApi";
 import { getRevampApplicationSections, type RevampSectionSnapshot } from "../../api/revampApplicationApi";
 import { useAuth } from "../../auth/AuthContext";
 import { AppToast } from "../../components/ui/toast";
@@ -356,6 +363,8 @@ export function AdminRegistryProfileDetailPage() {
   const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null);
   const [notes, setNotes] = useState("");
   const [showCompose, setShowCompose] = useState(false);
+  const [fieldChangeRequests, setFieldChangeRequests] = useState<FieldChangeRequest[]>([]);
+  const [fcrActionBusy, setFcrActionBusy] = useState<string | null>(null);
   const refreshInFlightRef = useRef(false);
   const refreshQueuedRef = useRef(false);
 
@@ -410,15 +419,18 @@ export function AdminRegistryProfileDetailPage() {
       setTimeline(timelineData);
       setNotifications(notificationData);
       if (profileData.applicationId) {
-        const [sectionsData, auditData] = await Promise.all([
+        const [sectionsData, auditData, fcrs] = await Promise.all([
           getRevampApplicationSections(profileData.applicationId, token).catch(() => []),
-          getAdminAuditEvents(token, { entityType: "REVAMP_APPLICATION", entityId: profileData.applicationId }).catch(() => [])
+          getAdminAuditEvents(token, { entityType: "REVAMP_APPLICATION", entityId: profileData.applicationId }).catch(() => []),
+          listFieldChangeRequests(profileData.applicationId, token).catch(() => [] as FieldChangeRequest[])
         ]);
         setSections(sectionsData);
         setApplicationAudit(auditData);
+        setFieldChangeRequests(fcrs);
       } else {
         setSections([]);
         setApplicationAudit([]);
+        setFieldChangeRequests([]);
       }
       const aggregate = await getAdminEvaluationSummary(profileId, token).catch(() => null);
       setEvaluationAggregate(aggregate);
@@ -763,6 +775,90 @@ export function AdminRegistryProfileDetailPage() {
             {/* Comunicazioni tab */}
             {tab === "comunicazioni" ? (
               <div className="panel">
+
+                {/* ── Field Change Requests ── */}
+                {fieldChangeRequests.length > 0 ? (
+                  <>
+                    <h4><FileEdit className="h-4 w-4" /> Richieste di modifica dati</h4>
+                    <div className="profile-history-list" style={{ marginBottom: 24 }}>
+                      {fieldChangeRequests.map((fcr) => {
+                        const isPending = fcr.status === "PENDING_ADMIN_REVIEW";
+                        const statusLabel: Record<string, string> = {
+                          PENDING_ADMIN_REVIEW: "In attesa",
+                          UNLOCKED: "Sbloccata",
+                          REJECTED_BY_ADMIN: "Rifiutata",
+                          SUBMITTED: "Inviata",
+                          UNDER_REVIEW: "In revisione",
+                          APPROVED: "Approvata",
+                          REJECTED: "Respinta",
+                        };
+                        const busy = fcrActionBusy === fcr.id;
+                        return (
+                          <article key={fcr.id} className="admin-profile-history-item">
+                            <div className="history-event-header">
+                              <strong className="history-event-key">
+                                Sezione {fcr.sectionKey} — Richiesta modifica
+                              </strong>
+                              <span className={`comm-status-badge ${fcr.status === "APPROVED" ? "badge-ok" : fcr.status === "REJECTED" || fcr.status === "REJECTED_BY_ADMIN" ? "badge-warn" : "badge-neutral"}`}>
+                                {statusLabel[fcr.status] ?? fcr.status}
+                              </span>
+                            </div>
+                            <p className="subtle">{fcr.supplierMessage}</p>
+                            {fcr.adminNote ? (
+                              <p className="subtle"><em>Nota admin: {fcr.adminNote}</em></p>
+                            ) : null}
+                            {fcr.beforeValueJson && fcr.afterValueJson ? (
+                              <p className="subtle" style={{ fontSize: "0.75rem" }}>
+                                Modifica registrata — prima/dopo disponibile nell&apos;audit trail.
+                              </p>
+                            ) : null}
+                            <p className="subtle">{formatDateTime(fcr.createdAt)}</p>
+                            {isPending && canManageStatus ? (
+                              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                                <button
+                                  type="button"
+                                  className="home-btn home-btn-primary admin-action-btn"
+                                  style={{ fontSize: "0.8rem" }}
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setFcrActionBusy(fcr.id);
+                                    adminUnlockSection(fcr.id, {}, token)
+                                      .then((updated) => setFieldChangeRequests((prev) =>
+                                        prev.map((r) => r.id === updated.id ? updated : r)
+                                      ))
+                                      .catch(() => setToast({ message: "Sblocco non riuscito.", type: "error" }))
+                                      .finally(() => setFcrActionBusy(null));
+                                  }}
+                                >
+                                  {busy ? "..." : "Sblocca sezione"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="home-btn home-btn-danger admin-action-btn"
+                                  style={{ fontSize: "0.8rem" }}
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setFcrActionBusy(fcr.id);
+                                    adminRejectChangeRequest(fcr.id, {}, token)
+                                      .then((updated) => setFieldChangeRequests((prev) =>
+                                        prev.map((r) => r.id === updated.id ? updated : r)
+                                      ))
+                                      .catch(() => setToast({ message: "Rifiuto non riuscito.", type: "error" }))
+                                      .finally(() => setFcrActionBusy(null));
+                                  }}
+                                >
+                                  {busy ? "..." : "Rifiuta"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : null}
+
+                {/* ── System communications ── */}
                 <h4><Mail className="h-4 w-4" /> Comunicazioni inviate</h4>
                 {communicationRows.length === 0 ? (
                   <p className="subtle">Nessuna comunicazione registrata per questo profilo.</p>

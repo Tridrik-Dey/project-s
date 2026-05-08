@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { ChevronDown, ChevronUp, Download, FileText, Globe, Handshake, Image, LayoutGrid, MapPin, MessageSquare, Star, User, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, FileEdit, FileText, Globe, Handshake, Image, LayoutGrid, MapPin, MessageSquare, Star, User, X } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { API_BASE_URL } from "../../api/http";
 import {
@@ -17,6 +17,11 @@ import {
 } from "../../api/revampApplicationApi";
 import { saveRevampApplicationIdForRegistry } from "../../utils/revampApplicationSession";
 import { saveRevampIntegrationEditSession } from "../../utils/revampIntegrationEditSession";
+import {
+  listFieldChangeRequests,
+  type FieldChangeRequest,
+} from "../../api/fieldChangeRequestApi";
+import { FieldChangeRequestModal } from "../../components/supplier/FieldChangeRequestModal";
 
 const NAVY  = "#0f2a52";
 const GREEN = "#1a5c3a";
@@ -345,6 +350,8 @@ export function RevampSupplierDashboardPage() {
   const [integrationDrawerOpen, setIntegrationDrawerOpen] = useState(false);
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [fieldChangeRequests, setFieldChangeRequests] = useState<FieldChangeRequest[]>([]);
+  const [showFcrModal, setShowFcrModal] = useState(false);
 
   const isA    = registryParam === "albo-a";
   const isB    = registryParam === "albo-b";
@@ -359,10 +366,11 @@ export function RevampSupplierDashboardPage() {
         const expectedType = isA ? "ALBO_A" : "ALBO_B";
         if (app.registryType !== expectedType) { setLoading(false); return; }
         setApplication(app);
-        const [allSecs, timeline, integrationRequest] = await Promise.all([
+        const [allSecs, timeline, integrationRequest, fcrs] = await Promise.all([
           getRevampApplicationSections(app.id, auth.token!),
           getRevampApplicationCommunications(app.id, auth.token!).catch(() => [] as RevampApplicationCommunication[]),
-          getOpenRevampIntegrationRequest(app.id, auth.token!).catch(() => null)
+          getOpenRevampIntegrationRequest(app.id, auth.token!).catch(() => null),
+          listFieldChangeRequests(app.id, auth.token!).catch(() => [] as FieldChangeRequest[])
         ]);
         if (cancelled) return;
         const byKey: Record<string, RevampSectionSnapshot> = {};
@@ -373,6 +381,7 @@ export function RevampSupplierDashboardPage() {
         setSections(byKey);
         setCommunications(timeline);
         setOpenIntegrationRequest(integrationRequest);
+        setFieldChangeRequests(fcrs);
         setLoading(false);
         getMyEvaluationAggregate(auth.token!).then(setEvalAggregate).catch(() => {});
       })
@@ -1382,7 +1391,75 @@ export function RevampSupplierDashboardPage() {
           <div className="supplier-documents-head">
             <h3>Comunicazioni</h3>
             <span className="supplier-documents-count">{communicationCount} aggiornamenti</span>
+            {isApproved && (
+              <button
+                type="button"
+                className="home-btn home-btn-primary admin-action-btn"
+                style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem" }}
+                onClick={() => setShowFcrModal(true)}
+              >
+                <FileEdit size={15} />
+                Richiesta Modifica Dati
+              </button>
+            )}
           </div>
+
+          {/* ── FCR list — appears above system communications ── */}
+          {fieldChangeRequests.length > 0 && (
+            <div className="supplier-communications-card" style={{ marginBottom: 16 }}>
+              <div className="supplier-communications-top">
+                <div>
+                  <div className="supplier-communications-title">Richieste di modifica</div>
+                  <div className="supplier-communications-subtitle">Storico delle tue richieste di aggiornamento dati.</div>
+                </div>
+                <div className="supplier-communications-icon"><FileEdit size={19} /></div>
+              </div>
+              {fieldChangeRequests.map((fcr) => {
+                const statusLabels: Record<string, string> = {
+                  PENDING_ADMIN_REVIEW: "In attesa di risposta",
+                  UNLOCKED: "Sezione sbloccata — aggiorna i tuoi dati",
+                  REJECTED_BY_ADMIN: "Richiesta rifiutata",
+                  SUBMITTED: "Inviata — in revisione",
+                  UNDER_REVIEW: "In revisione",
+                  APPROVED: "Modifica approvata",
+                  REJECTED: "Modifica respinta",
+                };
+                const isUnlocked = fcr.status === "UNLOCKED";
+                return (
+                  <div key={fcr.id} className={`supplier-communication-row${isUnlocked ? " is-actionable" : ""}`}>
+                    <div className="supplier-communication-marker" />
+                    <span className="supplier-communication-date">
+                      {new Date(fcr.createdAt).toLocaleDateString("it-IT")}
+                    </span>
+                    <span className="supplier-communication-text">
+                      <span>
+                        <strong>Sezione {fcr.sectionKey}</strong> — {fcr.supplierMessage}
+                      </span>
+                      <span style={{ display: "block", fontSize: "0.78rem", marginTop: 2, opacity: 0.75 }}>
+                        {statusLabels[fcr.status] ?? fcr.status}
+                        {fcr.adminNote ? ` — Nota admin: ${fcr.adminNote}` : ""}
+                      </span>
+                      {isUnlocked && application && (
+                        <span className="supplier-communication-action-meta">
+                          <button
+                            type="button"
+                            className="supplier-communication-row-btn"
+                            onClick={() => {
+                              const step = { S1: 1, S2: 2, S3: 3, S4: 4, S5: 5 }[fcr.sectionKey] ?? 1;
+                              window.location.href = `/revamp/${application.registryType === "ALBO_B" ? "albo-b" : "albo-a"}/step-${step}`;
+                            }}
+                          >
+                            Aggiorna Sezione {fcr.sectionKey}
+                          </button>
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <div className="supplier-communications-card">
             <div className="supplier-communications-top">
               <div>
@@ -1415,6 +1492,19 @@ export function RevampSupplierDashboardPage() {
             })}
           </div>
         </div>
+      )}
+
+      {/* ── FCR Modal ── */}
+      {showFcrModal && application && (
+        <FieldChangeRequestModal
+          applicationId={application.id}
+          token={auth.token!}
+          onClose={() => setShowFcrModal(false)}
+          onSent={() => {
+            setShowFcrModal(false);
+            listFieldChangeRequests(application.id, auth.token!).then(setFieldChangeRequests).catch(() => {});
+          }}
+        />
       )}
 
       {/* ═══════════════════════════════════════════════════
