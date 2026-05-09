@@ -47,6 +47,7 @@ public class RevampReviewWorkflowService {
     private final RevampProfileProjectionService profileProjectionService;
     private final RevampIntegrationRequestMailService integrationRequestMailService;
     private final RevampFieldChangeRequestService fieldChangeRequestService;
+    private final RevampDocumentRenewalRequestService documentRenewalRequestService;
     private final ObjectMapper objectMapper;
     private static final List<ReviewCaseStatus> FINAL_STATUSES = List.of(ReviewCaseStatus.DECIDED, ReviewCaseStatus.CLOSED);
 
@@ -107,6 +108,11 @@ public class RevampReviewWorkflowService {
         }
 
         if (assignedToUserId != null) {
+            boolean fieldChangeReview = reviewCase.getId() != null && fieldChangeRequestService.hasReviewCase(reviewCase.getId());
+            String assignedRole = resolveActorGovernanceRole(assignedToUserId);
+            if (fieldChangeReview && "REVISORE".equals(assignedRole)) {
+                throw new IllegalStateException("Le modifiche dati possono essere prese in carico solo da SUPER_ADMIN o RESPONSABILE_ALBO.");
+            }
             User assigned = userRepository.findById(assignedToUserId)
                     .orElseThrow(() -> new EntityNotFoundException("User", assignedToUserId));
             reviewCase.setAssignedToUser(assigned);
@@ -118,9 +124,14 @@ public class RevampReviewWorkflowService {
             reviewCase.setSlaDueAt(slaDueAt);
         }
 
-        application.setStatus(ApplicationStatus.UNDER_REVIEW);
+        boolean documentRenewalReview = reviewCase.getId() != null && documentRenewalRequestService.hasReviewCase(reviewCase.getId());
+        if (!documentRenewalReview) {
+            application.setStatus(ApplicationStatus.UNDER_REVIEW);
+        }
         applicationRepository.save(application);
         RevampReviewCase savedCase = reviewCaseRepository.save(reviewCase);
+        fieldChangeRequestService.markUnderReview(savedCase.getId());
+        documentRenewalRequestService.markUnderReview(savedCase.getId());
         String actorRole = resolveActorGovernanceRole(assignedToUserId);
         String actorName = reviewCase.getAssignedToUser() != null ? reviewCase.getAssignedToUser().getEmail() : "";
         auditService.append(new RevampAuditEventInputDto(
@@ -287,6 +298,7 @@ public class RevampReviewWorkflowService {
                 latest.getDueAt(),
                 latest.getRequestMessage(),
                 latest.getRequestedItemsJson(),
+                latest.getSupplierResponseJson(),
                 latest.getUpdatedAt()
         );
     }
@@ -300,7 +312,9 @@ public class RevampReviewWorkflowService {
         if (reviewCase.getStatus() == ReviewCaseStatus.WAITING_SUPPLIER_RESPONSE) {
             throw new IllegalStateException("Cannot decide while awaiting supplier response.");
         }
-        if (reviewCase.getVerifiedAt() == null) {
+        boolean fieldChangeReview = fieldChangeRequestService.hasReviewCase(reviewCaseId);
+        boolean documentRenewalReview = documentRenewalRequestService.hasReviewCase(reviewCaseId);
+        if (!fieldChangeReview && reviewCase.getVerifiedAt() == null) {
             throw new IllegalStateException("Cannot decide before the review case has been verified.");
         }
         RevampIntegrationRequest openExisting = integrationRequestRepository
@@ -326,16 +340,20 @@ public class RevampReviewWorkflowService {
         reviewCase.setDecidedAt(LocalDateTime.now());
         reviewCase.setStatus(ReviewCaseStatus.DECIDED);
 
-        switch (decision) {
-            case APPROVED -> {
-                application.setStatus(ApplicationStatus.APPROVED);
-                application.setApprovedAt(LocalDateTime.now());
+        if (documentRenewalReview) {
+            application.setStatus(ApplicationStatus.APPROVED);
+        } else {
+            switch (decision) {
+                case APPROVED -> {
+                    application.setStatus(ApplicationStatus.APPROVED);
+                    application.setApprovedAt(LocalDateTime.now());
+                }
+                case REJECTED -> {
+                    application.setStatus(ApplicationStatus.REJECTED);
+                    application.setRejectedAt(LocalDateTime.now());
+                }
+                default -> throw new IllegalStateException("Unhandled review decision: " + decision);
             }
-            case REJECTED -> {
-                application.setStatus(ApplicationStatus.REJECTED);
-                application.setRejectedAt(LocalDateTime.now());
-            }
-            default -> throw new IllegalStateException("Unhandled review decision: " + decision);
         }
 
         applicationRepository.save(application);
@@ -344,6 +362,7 @@ public class RevampReviewWorkflowService {
         }
         RevampReviewCase savedCase = reviewCaseRepository.save(reviewCase);
         fieldChangeRequestService.handleReviewDecision(savedCase.getId(), decision, decidedByUserId);
+        documentRenewalRequestService.handleReviewDecision(savedCase.getId(), decision, decidedByUserId);
         String actorRole = resolveActorGovernanceRole(decidedByUserId);
         auditService.append(new RevampAuditEventInputDto(
                 "revamp.review.decided",

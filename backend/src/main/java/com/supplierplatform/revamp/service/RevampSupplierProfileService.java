@@ -7,11 +7,14 @@ import com.supplierplatform.revamp.dto.RevampAuditEventSummaryDto;
 import com.supplierplatform.revamp.dto.RevampSupplierProfileDto;
 import com.supplierplatform.revamp.dto.RevampSupplierProfileTimelineEventDto;
 import com.supplierplatform.revamp.enums.AdminRole;
+import com.supplierplatform.revamp.enums.FieldChangeRequestStatus;
 import com.supplierplatform.revamp.enums.RegistryProfileStatus;
 import com.supplierplatform.revamp.enums.RegistryType;
+import com.supplierplatform.revamp.model.RevampFieldChangeRequest;
 import com.supplierplatform.revamp.model.RevampNotificationEvent;
 import com.supplierplatform.revamp.model.RevampSupplierRegistryProfile;
 import com.supplierplatform.revamp.model.RevampSupplierRegistryProfileDetail;
+import com.supplierplatform.revamp.repository.RevampFieldChangeRequestRepository;
 import com.supplierplatform.revamp.repository.RevampSupplierRegistryProfileDetailRepository;
 import com.supplierplatform.revamp.repository.RevampSupplierRegistryProfileRepository;
 import com.supplierplatform.user.User;
@@ -42,9 +45,15 @@ import java.util.stream.Collectors;
 public class RevampSupplierProfileService {
 
     private static final String ENTITY_TYPE = "REVAMP_SUPPLIER_PROFILE";
+    private static final List<FieldChangeRequestStatus> PENDING_FIELD_CHANGE_STATUSES = List.of(
+            FieldChangeRequestStatus.SUBMITTED,
+            FieldChangeRequestStatus.UNDER_REVIEW
+    );
 
     private final RevampSupplierRegistryProfileRepository profileRepository;
     private final RevampSupplierRegistryProfileDetailRepository profileDetailRepository;
+    private final RevampFieldChangeRequestRepository fieldChangeRequestRepository;
+    private final RevampDocumentRenewalRequestService documentRenewalRequestService;
     private final RevampAuditService auditService;
     private final JavaMailSender mailSender;
     private final RevampNotificationEventService notificationEventService;
@@ -319,6 +328,21 @@ public class RevampSupplierProfileService {
         var adminCardView = projected != null && projected.has("adminCardView")
                 ? projected.get("adminCardView")
                 : null;
+        List<String> pendingSections = profile.getApplication() == null || profile.getApplication().getId() == null
+                ? List.of()
+                : fieldChangeRequestRepository
+                .findByApplicationIdAndStatusIn(profile.getApplication().getId(), PENDING_FIELD_CHANGE_STATUSES)
+                .stream()
+                .map(RevampFieldChangeRequest::getSectionKey)
+                .filter(key -> key != null && !key.isBlank())
+                .distinct()
+                .toList();
+        List<String> pendingRenewals = profile.getApplication() == null || profile.getApplication().getId() == null
+                ? List.of()
+                : documentRenewalRequestService.activeLabels(profile.getApplication().getId());
+        List<String> expiredDocuments = profile.getApplication() == null || profile.getApplication().getId() == null
+                ? List.of()
+                : documentRenewalRequestService.expiredWithoutResponseLabels(profile.getApplication().getId());
         return new RevampSupplierProfileDto(
                 profile.getId(),
                 profile.getApplication() != null ? profile.getApplication().getId() : null,
@@ -335,7 +359,12 @@ public class RevampSupplierProfileService {
                 profile.getCreatedAt(),
                 profile.getUpdatedAt(),
                 publicCardView,
-                adminCardView
+                adminCardView,
+                !pendingSections.isEmpty(),
+                pendingSections,
+                !pendingRenewals.isEmpty(),
+                pendingRenewals,
+                expiredDocuments
         );
     }
 

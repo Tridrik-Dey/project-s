@@ -2,10 +2,14 @@ import { ChangeEvent, useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, ArrowRight, CheckCircle, Info, Save } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
-import { answerRevampIntegrationRequest, getMyLatestRevampApplication, getRevampApplicationSections, saveRevampApplicationSection } from "../../api/revampApplicationApi";
+import { getMyLatestRevampApplication, getRevampApplicationSections, saveRevampApplicationSection } from "../../api/revampApplicationApi";
 import { loadRevampApplicationIdForRegistry, saveRevampApplicationIdForRegistry } from "../../utils/revampApplicationSession";
 import { clearRevampIntegrationEditSession, isRevampIntegrationEditFor } from "../../utils/revampIntegrationEditSession";
+import { completeRevampIntegrationEdit } from "../../utils/revampIntegrationCompletion";
 import { ATECO_FORMAT_ERROR, isValidAtecoCode, normalizeAtecoCode } from "../../utils/atecoValidation";
+import { loadRevampFcrEditSession } from "../../utils/revampFcrEditSession";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
 
 const GREEN = "#1a5c3a";
 const MUTED = "#6b7280";
@@ -97,14 +101,14 @@ function StepBar({ active }: { active: number }) {
   );
 }
 
-function SelectField({ label, required, value, onChange, options, error }: {
+function SelectField({ label, required, value, onChange, options, error, disabled }: {
   label: string; required?: boolean; value: string; onChange: OnChange;
-  options: { value: string; label: string }[]; error?: string;
+  options: { value: string; label: string }[]; error?: string; disabled?: boolean;
 }) {
   return (
     <div style={col}>
       <span style={lbl}>{label}{required ? <span style={{ color: ERR }}> *</span> : null}</span>
-      <select value={value} onChange={onChange} style={baseInput(!!error)}>
+      <select value={value} onChange={onChange} style={baseInput(!!error)} disabled={disabled}>
         <option value="">Seleziona...</option>
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -141,6 +145,7 @@ function ErrorTooltip({ message }: { message: string }) {
 export function RevampAlboBStep2StrutturaDimensionePage() {
   const navigate = useNavigate();
   const { auth } = useAuth();
+  const fcr = useFcrEditMode();
   const integrationEdit = isRevampIntegrationEditFor("ALBO_B", 2);
 
   const [dipendenti,     setDipendenti]     = useState("");
@@ -192,7 +197,8 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
       if (s2.runts)                               setRunts(s2.runts as string);
     }
 
-    const existingAppId = loadRevampApplicationIdForRegistry("ALBO_B");
+    const fcrSession = loadRevampFcrEditSession();
+    const existingAppId = fcrSession?.applicationId ?? loadRevampApplicationIdForRegistry("ALBO_B");
     if (existingAppId) {
       getRevampApplicationSections(existingAppId, auth.token).then(applyS2).catch(() => {});
       return;
@@ -226,6 +232,10 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
     });
   }
 
+  function readOnlyGroup(key: string) {
+    return fcr.active && fcr.isLocked(key);
+  }
+
   function validate(): Record<string, string> {
     const e: Record<string, string> = {};
     if (!dipendenti) e.dipendenti = "Campo obbligatorio.";
@@ -248,23 +258,50 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
     setSavedAt(`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`);
   }
 
+  function buildApiPayload() {
+    const payload = {
+      dipendenti, fatturato, atecoMain: normalizeAtecoCode(atecoMain),
+      atecoSecondari: atecoSec.map(normalizeAtecoCode).filter(Boolean),
+      regioni: Array.from(regioni),
+      accreditatoFormazione: accreditato,
+      accreditamentoRegioni: Array.from(accRegioni),
+      accreditamentoTipi: Array.from(accTipi),
+      isTerzoSettore, tipoEts, runts,
+    };
+    const EMP_MAP: Record<string, string> = {
+      solo_titolare: "E_1_9", "2_5": "E_1_9",
+      "6_15": "E_10_49", "16_50": "E_10_49",
+      "51_250": "E_50_249", oltre_250: "E_250_PLUS",
+    };
+    return {
+      ...payload,
+      employeeRange:    EMP_MAP[dipendenti] ?? dipendenti,
+      atecoPrimary:     normalizeAtecoCode(atecoMain),
+      atecoSecondary:   atecoSec.map(normalizeAtecoCode).filter(Boolean),
+      revenueBand:      fatturato,
+      operatingRegions: tuttaItalia ? [{ region: "Italia" }] : Array.from(regioni).map(r => ({ region: r })),
+      tuttaItalia: tuttaItalia || undefined,
+      thirdSectorType:  isTerzoSettore === "si" ? tipoEts : undefined,
+      runtsNumber:      isTerzoSettore === "si" ? runts : undefined,
+    };
+  }
+
   async function handleSaveDraft() {
     if (!auth?.token) return;
     try {
-      const appId = loadRevampApplicationIdForRegistry("ALBO_B");
+      const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry("ALBO_B");
       if (!appId) return;
-      await saveRevampApplicationSection(appId, "S2", JSON.stringify({
-        dipendenti, fatturato, atecoMain: normalizeAtecoCode(atecoMain),
-        atecoSecondari: atecoSec.map(normalizeAtecoCode).filter(Boolean),
-        tuttaItalia: tuttaItalia || undefined,
-        regioni: tuttaItalia ? ["Italia"] : Array.from(regioni),
-        accreditatoFormazione: accreditato,
-        accreditamentoRegioni: Array.from(accRegioni),
-        accreditamentoTipi: Array.from(accTipi),
-        isTerzoSettore, tipoEts, runts,
-      }), false, auth.token);
+      await saveRevampApplicationSection(appId, "S2", JSON.stringify(buildApiPayload()), false, auth.token);
       handleSave();
     } catch { /* best-effort */ }
+  }
+
+  async function saveSectionProgrammatic() {
+    if (!auth?.token) return;
+    const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry("ALBO_B");
+    if (!appId) return;
+    await saveRevampApplicationSection(appId, "S2", JSON.stringify(buildApiPayload()), true, auth.token);
+    handleSave();
   }
 
   async function handleNext() {
@@ -284,26 +321,10 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
     let savedAppId: string | null = null;
     if (auth?.token) {
       try {
-        const appId = loadRevampApplicationIdForRegistry("ALBO_B");
-        if (appId) {
-          savedAppId = appId;
-          const EMP_MAP: Record<string, string> = {
-            solo_titolare: "E_1_9", "2_5": "E_1_9",
-            "6_15": "E_10_49", "16_50": "E_10_49",
-            "51_250": "E_50_249", oltre_250: "E_250_PLUS",
-          };
-          const apiPayload = {
-            ...payload,
-            employeeRange:    EMP_MAP[dipendenti] ?? dipendenti,
-            atecoPrimary:     normalizeAtecoCode(atecoMain),
-            atecoSecondary:   atecoSec.map(normalizeAtecoCode).filter(Boolean),
-            revenueBand:      fatturato,
-            operatingRegions: tuttaItalia ? [{ region: "Italia" }] : Array.from(regioni).map(r => ({ region: r })),
-            tuttaItalia: tuttaItalia || undefined,
-            thirdSectorType:  isTerzoSettore === "si" ? tipoEts : undefined,
-            runtsNumber:      isTerzoSettore === "si" ? runts : undefined,
-          };
-          await saveRevampApplicationSection(appId, "S2", JSON.stringify(apiPayload), true, auth.token);
+          const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry("ALBO_B");
+          if (appId) {
+            savedAppId = appId;
+          await saveRevampApplicationSection(appId, "S2", JSON.stringify(buildApiPayload()), true, auth.token);
         }
       } catch {
         window.alert("Salvataggio non riuscito. Controlla i dati e riprova.");
@@ -312,7 +333,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
     }
     if (integrationEdit && auth?.token && savedAppId) {
       try {
-        await answerRevampIntegrationRequest(savedAppId, auth.token);
+        await completeRevampIntegrationEdit(savedAppId, auth.token, integrationEdit);
         clearRevampIntegrationEditSession();
       } catch {
         window.alert("Invio integrazione non riuscito. Controlla i dati e riprova.");
@@ -343,9 +364,9 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
         </button>
       </div>
 
-      {integrationEdit ? (
+      {integrationEdit || fcr.active ? (
         <div style={{ background: "#eff6ff", borderBottom: "1px solid #bfdbfe", padding: "12px 40px", color: "#174f82", fontSize: "0.86rem", fontWeight: 700 }}>
-          Integrazione richiesta - Correggi questa sezione, salva e invia la risposta.
+          {fcr.active ? "Richiesta di modifica - Aggiorna solo il gruppo sbloccato, poi salva e invia." : "Integrazione richiesta - Correggi questa sezione, salva e invia la risposta."}
         </div>
       ) : (
         <StepBar active={1} />
@@ -360,8 +381,8 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
           {/* Dimensione */}
           <SectionLabel label="Dimensione aziendale" />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-            <SelectField label="Numero dipendenti (attuale)" required value={dipendenti} onChange={e => { setDipendenti(e.target.value); if (errors.dipendenti) setErrors(p => { const n={...p}; delete n.dipendenti; return n; }); }} options={FASCE_DIPENDENTI} error={errors.dipendenti} />
-            <SelectField label="Fatturato ultimo esercizio chiuso" value={fatturato} onChange={e => setFatturato(e.target.value)} options={FASCE_FATTURATO} />
+            <SelectField label="Numero dipendenti (attuale)" required value={dipendenti} disabled={readOnlyGroup("dimensione")} onChange={e => { setDipendenti(e.target.value); if (errors.dipendenti) setErrors(p => { const n={...p}; delete n.dipendenti; return n; }); }} options={FASCE_DIPENDENTI} error={errors.dipendenti} />
+            <SelectField label="Fatturato ultimo esercizio chiuso" value={fatturato} disabled={readOnlyGroup("dimensione")} onChange={e => setFatturato(e.target.value)} options={FASCE_FATTURATO} />
           </div>
 
           {/* ATECO */}
@@ -383,6 +404,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
                 });
               }}
               placeholder="Es. 85.59 — Altre attività di istruzione n.c.a."
+              disabled={readOnlyGroup("ateco_b")}
               style={{ ...baseInput(!!errors.atecoMain), marginTop: 4 }}
             />
             {errors.atecoMain && errors.atecoMain !== ATECO_FORMAT_ERROR ? <span style={errTxt}>{errors.atecoMain}</span> : null}
@@ -394,7 +416,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
                   ATECO secondario {i+1} <span style={{ fontWeight: 400, color: MUTED }}>(opzionale)</span>
                   {errors[`atecoSec_${i}`] === ATECO_FORMAT_ERROR ? <ErrorTooltip message={errors[`atecoSec_${i}`]} /> : null}
                 </span>
-                <input value={atecoSec[i]} onChange={e => setAtecoSecItem(i, e.target.value)} placeholder={`Codice ATECO secondario ${i+1}`} style={baseInput(!!errors[`atecoSec_${i}`])} />
+                <input value={atecoSec[i]} onChange={e => setAtecoSecItem(i, e.target.value)} disabled={readOnlyGroup("ateco_b")} placeholder={`Codice ATECO secondario ${i+1}`} style={baseInput(!!errors[`atecoSec_${i}`])} />
               </div>
             ))}
           </div>
@@ -406,6 +428,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
             <input
               type="checkbox"
               checked={tuttaItalia}
+              disabled={readOnlyGroup("regioni_op")}
               onChange={() => {
                 setTuttaItalia(v => !v);
                 if (!tuttaItalia) setRegioni(new Set());
@@ -420,7 +443,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 8 }}>
                 {REGIONI_IT.map(r => (
                   <label key={r} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.82rem", cursor: "pointer", padding: "6px 8px", borderRadius: 6, background: regioni.has(r) ? `${GREEN}0d` : "#f9fafb", border: `1px solid ${regioni.has(r) ? GREEN : "#e5e7eb"}`, transition: "background .12s" }}>
-                    <input type="checkbox" checked={regioni.has(r)} onChange={() => toggleRegione(r)} style={{ accentColor: GREEN }} /> {r}
+                    <input type="checkbox" checked={regioni.has(r)} disabled={readOnlyGroup("regioni_op")} onChange={() => toggleRegione(r)} style={{ accentColor: GREEN }} /> {r}
                   </label>
                 ))}
               </div>
@@ -436,7 +459,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
             <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
               {(["si","no"] as const).map(v => (
                 <label key={v} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "8px 16px", borderRadius: 6, border: `1.5px solid ${accreditato === v ? GREEN : "#e5e7eb"}`, background: accreditato === v ? `${GREEN}0d` : "#fff" }}>
-                  <input type="radio" name="accreditato" value={v} checked={accreditato === v} onChange={() => { setAccreditato(v); if (errors.accreditato) setErrors(p => { const n={...p}; delete n.accreditato; return n; }); }} style={{ accentColor: GREEN }} />
+                  <input type="radio" name="accreditato" value={v} checked={accreditato === v} disabled={readOnlyGroup("acc_formazione")} onChange={() => { setAccreditato(v); if (errors.accreditato) setErrors(p => { const n={...p}; delete n.accreditato; return n; }); }} style={{ accentColor: GREEN }} />
                   <span style={{ fontSize: "0.88rem", fontWeight: 600, color: accreditato === v ? GREEN : "#374151" }}>{v === "si" ? "Sì" : "No"}</span>
                 </label>
               ))}
@@ -451,7 +474,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginTop: 6 }}>
                   {REGIONI_IT.map(r => (
                     <label key={r} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: "0.78rem", cursor: "pointer", padding: "4px 6px", borderRadius: 5, background: accRegioni.has(r) ? `${GREEN}0d` : "#fff", border: `1px solid ${accRegioni.has(r) ? GREEN : "#e5e7eb"}` }}>
-                      <input type="checkbox" checked={accRegioni.has(r)} onChange={() => toggleAccRegione(r)} style={{ accentColor: GREEN }} /> {r}
+                      <input type="checkbox" checked={accRegioni.has(r)} disabled={readOnlyGroup("acc_formazione")} onChange={() => toggleAccRegione(r)} style={{ accentColor: GREEN }} /> {r}
                     </label>
                   ))}
                 </div>
@@ -462,7 +485,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
                 <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
                   {TIPI_ACCREDITAMENTO.map(t => (
                     <label key={t.value} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.82rem", cursor: "pointer", padding: "6px 12px", borderRadius: 6, border: `1px solid ${accTipi.has(t.value) ? GREEN : "#e5e7eb"}`, background: accTipi.has(t.value) ? `${GREEN}0d` : "#fff" }}>
-                      <input type="checkbox" checked={accTipi.has(t.value)} onChange={() => toggleAccTipo(t.value)} style={{ accentColor: GREEN }} /> {t.label}
+                      <input type="checkbox" checked={accTipi.has(t.value)} disabled={readOnlyGroup("acc_formazione")} onChange={() => toggleAccTipo(t.value)} style={{ accentColor: GREEN }} /> {t.label}
                     </label>
                   ))}
                 </div>
@@ -478,7 +501,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
             <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
               {(["si","no"] as const).map(v => (
                 <label key={v} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "8px 16px", borderRadius: 6, border: `1.5px solid ${isTerzoSettore === v ? GREEN : "#e5e7eb"}`, background: isTerzoSettore === v ? `${GREEN}0d` : "#fff" }}>
-                  <input type="radio" name="terzoSettore" value={v} checked={isTerzoSettore === v} onChange={() => { setIsTerzoSettore(v); if (errors.isTerzoSettore) setErrors(p => { const n={...p}; delete n.isTerzoSettore; return n; }); }} style={{ accentColor: GREEN }} />
+                  <input type="radio" name="terzoSettore" value={v} checked={isTerzoSettore === v} disabled={readOnlyGroup("terzo_settore")} onChange={() => { setIsTerzoSettore(v); if (errors.isTerzoSettore) setErrors(p => { const n={...p}; delete n.isTerzoSettore; return n; }); }} style={{ accentColor: GREEN }} />
                   <span style={{ fontSize: "0.88rem", fontWeight: 600, color: isTerzoSettore === v ? GREEN : "#374151" }}>{v === "si" ? "Sì" : "No"}</span>
                 </label>
               ))}
@@ -490,7 +513,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div style={col}>
                   <span style={lbl}>Tipo di organizzazione ETS <span style={{ color: ERR }}>*</span></span>
-                  <select value={tipoEts} onChange={e => { setTipoEts(e.target.value); if (errors.tipoEts) setErrors(p => { const n={...p}; delete n.tipoEts; return n; }); }} style={baseInput(!!errors.tipoEts)}>
+                  <select value={tipoEts} disabled={readOnlyGroup("terzo_settore")} onChange={e => { setTipoEts(e.target.value); if (errors.tipoEts) setErrors(p => { const n={...p}; delete n.tipoEts; return n; }); }} style={baseInput(!!errors.tipoEts)}>
                     <option value="">Seleziona...</option>
                     {TIPI_TERZO_SETTORE.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
@@ -498,7 +521,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
                 </div>
                 <div style={col}>
                   <span style={lbl}>N. iscrizione RUNTS <span style={{ fontWeight: 400, color: MUTED }}>(opzionale)</span></span>
-                  <input value={runts} onChange={e => setRunts(e.target.value)} placeholder="Numero e sezione di iscrizione al RUNTS" style={baseInput()} />
+                  <input value={runts} disabled={readOnlyGroup("terzo_settore")} onChange={e => setRunts(e.target.value)} placeholder="Numero e sezione di iscrizione al RUNTS" style={baseInput()} />
                 </div>
               </div>
             </div>
@@ -514,7 +537,7 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
       </div>
 
       {/* Bottom nav */}
-      <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 40px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
+      {!fcr.active && <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 40px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
         <Link className="wizard-nav-button wizard-nav-button-prev" to={integrationEdit?.returnPath ?? "/apply/albo-b"} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: "#fff", border: `1.5px solid ${GREEN}`, borderRadius: 6, fontWeight: 600, fontSize: "0.85rem", color: GREEN, textDecoration: "none" }}>
           <ArrowLeft size={15} /> {integrationEdit ? "Torna alla richiesta" : "Sezione precedente"}
         </Link>
@@ -531,7 +554,8 @@ export function RevampAlboBStep2StrutturaDimensionePage() {
         <button className="wizard-nav-button wizard-nav-button-next" type="button" onClick={() => void handleNext()} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: GREEN, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, fontSize: "0.85rem", cursor: "pointer" }}>
           {integrationEdit ? "Salva e invia integrazione" : "Sezione successiva"} <ArrowRight size={15} />
         </button>
-      </div>
+      </div>}
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
     </div>
   );
 }

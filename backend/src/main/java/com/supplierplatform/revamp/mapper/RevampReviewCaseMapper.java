@@ -4,9 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.supplierplatform.revamp.dto.RevampReviewCaseSummaryDto;
 import com.supplierplatform.revamp.enums.RegistryType;
 import com.supplierplatform.revamp.model.RevampApplication;
+import com.supplierplatform.revamp.model.RevampDocumentRenewalRequest;
+import com.supplierplatform.revamp.model.RevampFieldChangeRequest;
 import com.supplierplatform.revamp.model.RevampIntegrationRequest;
 import com.supplierplatform.revamp.model.RevampReviewCase;
 import com.supplierplatform.revamp.repository.RevampApplicationSectionRepository;
+import com.supplierplatform.revamp.repository.RevampDocumentRenewalRequestRepository;
+import com.supplierplatform.revamp.repository.RevampFieldChangeRequestRepository;
 import com.supplierplatform.revamp.repository.RevampIntegrationRequestRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -16,15 +20,21 @@ public class RevampReviewCaseMapper {
 
     private RevampIntegrationRequestRepository integrationRequestRepository;
     private RevampApplicationSectionRepository sectionRepository;
+    private RevampFieldChangeRequestRepository fieldChangeRequestRepository;
+    private RevampDocumentRenewalRequestRepository documentRenewalRequestRepository;
 
     public RevampReviewCaseMapper() {
     }
 
     @Autowired
     public RevampReviewCaseMapper(RevampIntegrationRequestRepository integrationRequestRepository,
-                                  RevampApplicationSectionRepository sectionRepository) {
+                                  RevampApplicationSectionRepository sectionRepository,
+                                  RevampFieldChangeRequestRepository fieldChangeRequestRepository,
+                                  RevampDocumentRenewalRequestRepository documentRenewalRequestRepository) {
         this.integrationRequestRepository = integrationRequestRepository;
         this.sectionRepository = sectionRepository;
+        this.fieldChangeRequestRepository = fieldChangeRequestRepository;
+        this.documentRenewalRequestRepository = documentRenewalRequestRepository;
     }
 
     public RevampReviewCaseSummaryDto toSummary(RevampReviewCase reviewCase) {
@@ -35,6 +45,12 @@ public class RevampReviewCaseMapper {
         RevampApplication app = reviewCase.getApplication();
         String registryType = app != null && app.getRegistryType() != null ? app.getRegistryType().name() : null;
         String applicantDisplayName = app != null ? resolveDisplayName(app) : null;
+        RevampFieldChangeRequest fieldChangeRequest = reviewCase.getId() == null || fieldChangeRequestRepository == null
+                ? null
+                : fieldChangeRequestRepository.findByReviewCaseId(reviewCase.getId()).orElse(null);
+        RevampDocumentRenewalRequest documentRenewalRequest = reviewCase.getId() == null || documentRenewalRequestRepository == null
+                ? null
+                : documentRenewalRequestRepository.findByReviewCaseId(reviewCase.getId()).stream().findFirst().orElse(null);
 
         return new RevampReviewCaseSummaryDto(
                 reviewCase.getId(),
@@ -60,7 +76,20 @@ public class RevampReviewCaseMapper {
                 latestIntegrationRequest != null ? latestIntegrationRequest.getSupplierRespondedAt() : null,
                 reviewCase.getUpdatedAt(),
                 registryType,
-                applicantDisplayName
+                applicantDisplayName,
+                documentRenewalRequest != null ? "DOCUMENT_RENEWAL" : (fieldChangeRequest != null ? "FIELD_CHANGE" : "APPLICATION"),
+                fieldChangeRequest != null ? fieldChangeRequest.getId() : null,
+                fieldChangeRequest != null ? fieldChangeRequest.getSectionKey() : null,
+                fieldChangeRequest != null && fieldChangeRequest.getStatus() != null ? fieldChangeRequest.getStatus().name() : null,
+                fieldChangeRequest != null && fieldChangeRequest.getBeforeValueJson() != null ? fieldChangeRequest.getBeforeValueJson().toString() : null,
+                fieldChangeRequest != null && fieldChangeRequest.getAfterValueJson() != null ? fieldChangeRequest.getAfterValueJson().toString() : null,
+                documentRenewalRequest != null ? documentRenewalRequest.getId() : null,
+                documentRenewalRequest != null && documentRenewalRequest.getStatus() != null ? documentRenewalRequest.getStatus().name() : null,
+                documentRenewalRequest != null ? documentRenewalRequest.getSectionKey() : null,
+                documentRenewalRequest != null ? documentRenewalRequest.getDocumentType() : null,
+                documentRenewalRequest != null ? documentRenewalRequest.getDocumentLabel() : null,
+                documentRenewalRequest != null && documentRenewalRequest.getOldAttachmentJson() != null ? documentRenewalRequest.getOldAttachmentJson().toString() : null,
+                documentRenewalRequest != null && documentRenewalRequest.getNewAttachmentJson() != null ? documentRenewalRequest.getNewAttachmentJson().toString() : null
         );
     }
 

@@ -35,6 +35,20 @@ export interface AdminFieldChangeActionPayload {
   adminNote?: string;
 }
 
+export interface AdminPendingFieldChangeRequest {
+  id: string;
+  applicationId: string;
+  protocolCode: string | null;
+  registryType: "ALBO_A" | "ALBO_B" | null;
+  supplierDisplayName: string | null;
+  supplierEmail: string | null;
+  sectionKey: string;
+  supplierMessage: string | null;
+  status: FieldChangeRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const BASE = "/api/v2/field-change-requests";
 
 export function createFieldChangeRequest(
@@ -65,6 +79,12 @@ export function getFieldChangeRequest(
   token: string
 ): Promise<FieldChangeRequest> {
   return apiRequest<FieldChangeRequest>(`${BASE}/${fcrId}`, {}, token);
+}
+
+export function listPendingAdminFieldChangeRequests(
+  token: string
+): Promise<AdminPendingFieldChangeRequest[]> {
+  return apiRequest<AdminPendingFieldChangeRequest[]>(`${BASE}/admin/pending`, {}, token);
 }
 
 export function adminUnlockSection(

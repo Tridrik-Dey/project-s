@@ -19,4 +19,6 @@ public interface RevampFieldChangeRequestRepository extends JpaRepository<Revamp
 
     List<RevampFieldChangeRequest> findByApplicationIdAndStatusIn(
             UUID applicationId, List<FieldChangeRequestStatus> statuses);
+
+    List<RevampFieldChangeRequest> findByStatusOrderByCreatedAtDesc(FieldChangeRequestStatus status);
 }

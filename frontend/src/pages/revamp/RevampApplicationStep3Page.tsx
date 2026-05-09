@@ -14,6 +14,8 @@ import { useAuth } from "../../auth/AuthContext";
 import { useI18n } from "../../i18n/I18nContext";
 import { saveRevampApplicationSession } from "../../utils/revampApplicationSession";
 import { resolveStepGuardRedirect } from "./revampFlow";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 type FieldErrors = Record<string, string>;
@@ -286,13 +288,14 @@ export function RevampApplicationStep3Page() {
   const { applicationId } = useParams();
   const { auth } = useAuth();
   const { t } = useI18n();
+  const fcr = useFcrEditMode();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [summary, setSummary] = useState<RevampApplicationSummary | null>(null);
   const [branchKey, setBranchKey] = useState<"S3A" | "S3B" | "S3">("S3");
   const [step3A, setStep3A] = useState<Section3A>(empty3A);
   const [step3B, setStep3B] = useState<Section3B>(empty3B);
-  const [step3Company, setStep3Company] = useState<Section3Company>(empty3Company);
+  const [, setStep3Company] = useState<Section3Company>(empty3Company);
   const [selectedServicesByCategory, setSelectedServicesByCategory] = useState<Record<string, string[]>>(createEmptyCategorySelection);
   const [serviceDescriptionsByCategory, setServiceDescriptionsByCategory] = useState<Record<string, string>>(createEmptyCategoryDescriptions);
   const [openCategoryId, setOpenCategoryId] = useState<string>(SERVICE_CATEGORIES[0].id);
@@ -309,6 +312,10 @@ export function RevampApplicationStep3Page() {
     if (saveState === "dirty") return t("revamp.step.common.saveState.dirty");
     return t("revamp.step.common.saveState.idle");
   }, [lastSavedAt, saveState, t]);
+
+  function fcrGroup(key: string) {
+    return `fcr-group${fcr.active ? (fcr.isLocked(key) ? " fcr-locked" : " fcr-active-group") : ""}`;
+  }
 
   useEffect(() => {
     async function bootstrap() {
@@ -536,15 +543,8 @@ export function RevampApplicationStep3Page() {
     markDirty();
   }
 
-  async function onSave(event: FormEvent) {
-    event.preventDefault();
-    if (!applicationId || !auth?.token || !registryType) return;
-
-    const validationErrors = validate(registryType, branchKey);
-    setErrors(validationErrors);
-    const completed = Object.keys(validationErrors).length === 0;
-    let payload: Section3A | Section3B | Section3Company = step3Company;
-    if (branchKey === "S3A") {
+  function buildPayload(key: "S3A" | "S3B" | "S3"): Section3A | Section3B | Section3Company {
+    if (key === "S3A") {
       const certifications = step3A.certifications
         .map((item) => ({ ...item, name: item.name.trim(), issuer: item.issuer.trim(), year: item.year.trim() }))
         .filter((item) => item.name || item.issuer || item.year);
@@ -569,19 +569,13 @@ export function RevampApplicationStep3Page() {
           fundName: item.fundName.trim()
         }))
         .filter((item) => item.clientName || item.interventionType || item.mainTheme);
-      payload = step3A;
-      payload = {
-        ...step3A,
-        certifications,
-        competencies,
-        languages,
-        experiences
-      };
-    } else if (branchKey === "S3B") {
+      return { ...step3A, certifications, competencies, languages, experiences };
+    }
+    if (key === "S3B") {
       const specificCertifications = step3B.specificCertifications
         .map((item) => ({ name: item.name.trim(), issuer: item.issuer.trim(), year: item.year.trim() }))
         .filter((item) => item.name || item.issuer || item.year);
-      payload = {
+      return {
         ...step3B,
         professionalOrder: step3B.professionalOrder.trim(),
         highestTitle: step3B.highestTitle.trim(),
@@ -595,20 +589,46 @@ export function RevampApplicationStep3Page() {
         hourlyRateRange: step3B.hourlyRateRange.trim(),
         specificCertifications
       };
-    } else {
-      const serviceIds = SERVICE_CATEGORIES.flatMap((category) => selectedServicesByCategory[category.id] ?? []);
-      const nonEmptyDescriptions = SERVICE_CATEGORIES.reduce<Record<string, string>>((acc, category) => {
-        const value = (serviceDescriptionsByCategory[category.id] ?? "").trim();
-        if (value) acc[category.id] = value;
-        return acc;
-      }, {});
-      payload = {
-        serviceCategoriesCsv: serviceIds.join(","),
-        servicesDescription: Object.entries(nonEmptyDescriptions).map(([categoryId, value]) => `${categoryId}: ${value}`).join("\n"),
-        servicesByCategory: selectedServicesByCategory,
-        descriptionsByCategory: nonEmptyDescriptions
-      };
     }
+    const serviceIds = SERVICE_CATEGORIES.flatMap((category) => selectedServicesByCategory[category.id] ?? []);
+    const nonEmptyDescriptions = SERVICE_CATEGORIES.reduce<Record<string, string>>((acc, category) => {
+      const value = (serviceDescriptionsByCategory[category.id] ?? "").trim();
+      if (value) acc[category.id] = value;
+      return acc;
+    }, {});
+    return {
+      serviceCategoriesCsv: serviceIds.join(","),
+      servicesDescription: Object.entries(nonEmptyDescriptions).map(([categoryId, value]) => `${categoryId}: ${value}`).join("\n"),
+      servicesByCategory: selectedServicesByCategory,
+      descriptionsByCategory: nonEmptyDescriptions
+    };
+  }
+
+  async function saveSectionProgrammatic(): Promise<void> {
+    if (!applicationId || !auth?.token || !registryType) return;
+    const validationErrors = validate(registryType, branchKey);
+    setErrors(validationErrors);
+    const completed = Object.keys(validationErrors).length === 0;
+    const payload = buildPayload(branchKey);
+    setSaveState("saving");
+    try {
+      const saved = await saveRevampApplicationSection(applicationId, branchKey, JSON.stringify(payload), completed, auth.token);
+      setLastSavedAt(new Date(saved.updatedAt).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }));
+      setSaveState("saved");
+    } catch (e) {
+      setSaveState("error");
+      throw e;
+    }
+  }
+
+  async function onSave(event: FormEvent) {
+    event.preventDefault();
+    if (!applicationId || !auth?.token || !registryType) return;
+
+    const validationErrors = validate(registryType, branchKey);
+    setErrors(validationErrors);
+    const completed = Object.keys(validationErrors).length === 0;
+    const payload = buildPayload(branchKey);
 
     setSaveState("saving");
     try {
@@ -669,855 +689,655 @@ export function RevampApplicationStep3Page() {
       <div className="panel revamp-step-header">
         <h2>{title}</h2>
         <p className="subtle">
-          {t("revamp.step.common.subtitle", { id: applicationId, state: saveLabel })}
+          {fcr.active
+            ? `Candidatura ${applicationId} - Richiesta di modifica: ${saveLabel}`
+            : t("revamp.step.common.subtitle", { id: applicationId, state: saveLabel })}
         </p>
       </div>
 
       <form className="panel stack" onSubmit={onSave}>
         {branchKey === "S3A" ? (
           <>
-            <h3 className="revamp-step-subtitle"><GraduationCap className="h-4 w-4" /> {t("revamp.step3.s3a.sectionTitle")}</h3>
-            <div className="grid-form">
-              <label className={`floating-field ${step3A.education.highestTitle ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3A.education.highestTitle}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStep3A((prev) => ({ ...prev, education: { ...prev.education, highestTitle: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Titolo di studio piu elevato *</span>
-              </label>
-              <label className={`floating-field ${step3A.education.studyArea ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3A.education.studyArea}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStep3A((prev) => ({ ...prev, education: { ...prev.education, studyArea: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Ambito / indirizzo di studio *</span>
-              </label>
-              <label className={`floating-field ${step3A.education.graduationYear ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3A.education.graduationYear}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStep3A((prev) => ({ ...prev, education: { ...prev.education, graduationYear: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Anno conseguimento *</span>
-              </label>
-            </div>
-            <div className="home-step-card">
-              <div className="home-step-head">
-                <span className="home-step-index">C</span>
-                <h4>Competenze e anni esperienza</h4>
-              </div>
-              <div className="stack">
-                {step3A.competencies.map((item, index) => (
-                  <div key={`cmp-${index}`} className="grid-form">
-                    <label className={`floating-field ${item.theme ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={item.theme}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setStep3A((prev) => ({ ...prev, competencies: updateArrayItem(prev.competencies, index, (curr) => ({ ...curr, theme: value })) }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">Tema *</span>
-                    </label>
-                    <label className={`floating-field ${item.details ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={item.details}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setStep3A((prev) => ({ ...prev, competencies: updateArrayItem(prev.competencies, index, (curr) => ({ ...curr, details: value })) }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">Dettagli *</span>
-                    </label>
-                    <label className="floating-field has-value">
-                      <select
-                        className="floating-input auth-input"
-                        value={item.yearsBand}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setStep3A((prev) => ({ ...prev, competencies: updateArrayItem(prev.competencies, index, (curr) => ({ ...curr, yearsBand: value })) }));
-                          markDirty();
-                        }}
-                      >
-                        <option value="">Esperienza *</option>
-                        <option value="LT_1">{"< 1 anno"}</option>
-                        <option value="Y1_3">1-3 anni</option>
-                        <option value="Y3_5">3-5 anni</option>
-                        <option value="Y5_10">5-10 anni</option>
-                        <option value="Y10_15">10-15 anni</option>
-                        <option value="GT_15">{"> 15 anni"}</option>
-                      </select>
-                      <span className="floating-field-label">Fascia esperienza *</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="home-btn home-btn-secondary"
-                      onClick={() => {
-                        setStep3A((prev) => ({
-                          ...prev,
-                          competencies: prev.competencies.length > 1 ? prev.competencies.filter((_, i) => i !== index) : prev.competencies
-                        }));
-                        markDirty();
-                      }}
-                    >
-                      Rimuovi
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="home-btn home-btn-secondary"
-                  onClick={() => {
-                    setStep3A((prev) => ({
-                      ...prev,
-                      competencies: [...prev.competencies, { theme: "", details: "", yearsBand: "" }]
-                    }));
-                    markDirty();
-                  }}
-                >
-                  + Aggiungi competenza
-                </button>
-              </div>
-            </div>
-
-            <div className="grid-form">
-              <label className={`floating-field ${step3A.consultingAreasCsv ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3A.consultingAreasCsv}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStep3A((prev) => ({ ...prev, consultingAreasCsv: value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Ambiti consulenza (CSV)</span>
-              </label>
-              <label className={`floating-field ${step3A.territoryRegionsCsv ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3A.territoryRegionsCsv}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStep3A((prev) => ({ ...prev, territoryRegionsCsv: value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Regioni operative (CSV)</span>
-              </label>
-              <label className={`floating-field ${step3A.territoryProvincesCsv ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3A.territoryProvincesCsv}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStep3A((prev) => ({ ...prev, territoryProvincesCsv: value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Province operative (CSV)</span>
-              </label>
-            </div>
-
-            <div className="home-step-card">
-              <div className="home-step-head">
-                <span className="home-step-index">L</span>
-                <h4>Lingue</h4>
-              </div>
-              <div className="stack">
-                {step3A.languages.map((item, index) => (
-                  <div key={`lng-${index}`} className="grid-form">
-                    <label className={`floating-field ${item.language ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={item.language}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setStep3A((prev) => ({ ...prev, languages: updateArrayItem(prev.languages, index, (curr) => ({ ...curr, language: value })) }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">Lingua</span>
-                    </label>
-                    <label className="floating-field has-value">
-                      <select
-                        className="floating-input auth-input"
-                        value={item.qcerLevel}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setStep3A((prev) => ({ ...prev, languages: updateArrayItem(prev.languages, index, (curr) => ({ ...curr, qcerLevel: value })) }));
-                          markDirty();
-                        }}
-                      >
-                        <option value="">QCER</option>
-                        <option value="A1">A1</option>
-                        <option value="A2">A2</option>
-                        <option value="B1">B1</option>
-                        <option value="B2">B2</option>
-                        <option value="C1">C1</option>
-                        <option value="C2">C2</option>
-                        <option value="NATIVE">Madrelingua</option>
-                      </select>
-                      <span className="floating-field-label">Livello QCER</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="home-btn home-btn-secondary"
-                      onClick={() => {
-                        setStep3A((prev) => ({
-                          ...prev,
-                          languages: prev.languages.length > 1 ? prev.languages.filter((_, i) => i !== index) : prev.languages
-                        }));
-                        markDirty();
-                      }}
-                    >
-                      Rimuovi
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="home-btn home-btn-secondary"
-                  onClick={() => {
-                    setStep3A((prev) => ({ ...prev, languages: [...prev.languages, { language: "", qcerLevel: "" }] }));
-                    markDirty();
-                  }}
-                >
-                  + Aggiungi lingua
-                </button>
-              </div>
-            </div>
-
-            <div className="grid-form">
-              <label className={`floating-field ${step3A.teachingLanguagesCsv ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3A.teachingLanguagesCsv}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStep3A((prev) => ({ ...prev, teachingLanguagesCsv: value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Lingue docenza (CSV)</span>
-              </label>
-              <label className={`floating-field ${step3A.digitalToolsCsv ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3A.digitalToolsCsv}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStep3A((prev) => ({ ...prev, digitalToolsCsv: value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Strumenti digitali (CSV)</span>
-              </label>
-              <label className={`floating-field ${step3A.professionalNetworksCsv ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3A.professionalNetworksCsv}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStep3A((prev) => ({ ...prev, professionalNetworksCsv: value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Reti/associazioni (CSV)</span>
-              </label>
-            </div>
-
-            <div className="home-step-card">
-              <div className="home-step-head">
-                <span className="home-step-index">A</span>
-                <h4>Disponibilita e tariffe</h4>
-              </div>
-              <label className="review-check-item">
-                <input
-                  type="checkbox"
-                  checked={step3A.availability.travelAvailable}
-                  onChange={(e) => {
-                    const value = e.target.checked;
-                    setStep3A((prev) => ({ ...prev, availability: { ...prev.availability, travelAvailable: value } }));
-                    markDirty();
-                  }}
-                />
-                <span>Disponibile a trasferte</span>
-              </label>
+            <fieldset className={fcrGroup("istruzione")} disabled={fcr.active && fcr.isLocked("istruzione")}>
+              <legend className="fcr-group-legend">Titolo di studio</legend>
+              <h3 className="revamp-step-subtitle"><GraduationCap className="h-4 w-4" /> {t("revamp.step3.s3a.sectionTitle")}</h3>
               <div className="grid-form">
-                <label className={`floating-field ${step3A.availability.dailyRateRange ? "has-value" : ""}`}>
+                <label className={`floating-field ${step3A.education.highestTitle ? "has-value" : ""}`}>
                   <input
                     className="floating-input auth-input"
-                    value={step3A.availability.dailyRateRange}
+                    value={step3A.education.highestTitle}
                     onChange={(e) => {
                       const value = e.target.value;
-                      setStep3A((prev) => ({ ...prev, availability: { ...prev.availability, dailyRateRange: value } }));
+                      setStep3A((prev) => ({ ...prev, education: { ...prev.education, highestTitle: value } }));
                       markDirty();
                     }}
                     placeholder=" "
                   />
-                  <span className="floating-field-label">Tariffa giornaliera (range)</span>
+                  <span className="floating-field-label">Titolo di studio piu elevato *</span>
                 </label>
-                <label className={`floating-field ${step3A.availability.hourlyRateRange ? "has-value" : ""}`}>
+                <label className={`floating-field ${step3A.education.studyArea ? "has-value" : ""}`}>
                   <input
                     className="floating-input auth-input"
-                    value={step3A.availability.hourlyRateRange}
+                    value={step3A.education.studyArea}
                     onChange={(e) => {
                       const value = e.target.value;
-                      setStep3A((prev) => ({ ...prev, availability: { ...prev.availability, hourlyRateRange: value } }));
+                      setStep3A((prev) => ({ ...prev, education: { ...prev.education, studyArea: value } }));
                       markDirty();
                     }}
                     placeholder=" "
                   />
-                  <span className="floating-field-label">Tariffa oraria (range)</span>
+                  <span className="floating-field-label">Ambito / indirizzo di studio *</span>
+                </label>
+                <label className={`floating-field ${step3A.education.graduationYear ? "has-value" : ""}`}>
+                  <input
+                    className="floating-input auth-input"
+                    value={step3A.education.graduationYear}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setStep3A((prev) => ({ ...prev, education: { ...prev.education, graduationYear: value } }));
+                      markDirty();
+                    }}
+                    placeholder=" "
+                  />
+                  <span className="floating-field-label">Anno conseguimento *</span>
                 </label>
               </div>
-            </div>
+              {errors.educationHighestTitle ? <p className="error">{errors.educationHighestTitle}</p> : null}
+              {errors.educationStudyArea ? <p className="error">{errors.educationStudyArea}</p> : null}
+              {errors.educationGraduationYear ? <p className="error">{errors.educationGraduationYear}</p> : null}
+            </fieldset>
 
-            <div className="home-step-card">
-              <div className="home-step-head">
-                <span className="home-step-index">E</span>
-                <h4>Esperienze formative (max 5)</h4>
-              </div>
-              <div className="stack">
-                {step3A.experiences.map((exp, index) => (
-                  <div key={`exp-${index}`} className="home-step-card">
-                    <div className="grid-form">
-                      <label className={`floating-field ${exp.clientName ? "has-value" : ""}`}>
+            <fieldset className={fcrGroup("competenze")} disabled={fcr.active && fcr.isLocked("competenze")}>
+              <legend className="fcr-group-legend">Competenze ed esperienza</legend>
+              <div className="home-step-card">
+                <div className="home-step-head">
+                  <span className="home-step-index">C</span>
+                  <h4>Competenze e anni esperienza</h4>
+                </div>
+                <div className="stack">
+                  {step3A.competencies.map((item, index) => (
+                    <div key={`cmp-${index}`} className="grid-form">
+                      <label className={`floating-field ${item.theme ? "has-value" : ""}`}>
                         <input
                           className="floating-input auth-input"
-                          value={exp.clientName}
+                          value={item.theme}
                           onChange={(e) => {
                             const value = e.target.value;
-                            setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, clientName: value })) }));
+                            setStep3A((prev) => ({ ...prev, competencies: updateArrayItem(prev.competencies, index, (curr) => ({ ...curr, theme: value })) }));
                             markDirty();
                           }}
                           placeholder=" "
                         />
-                        <span className="floating-field-label">Committente *</span>
+                        <span className="floating-field-label">Tema *</span>
                       </label>
-                      <label className={`floating-field ${exp.clientSector ? "has-value" : ""}`}>
+                      <label className={`floating-field ${item.details ? "has-value" : ""}`}>
                         <input
                           className="floating-input auth-input"
-                          value={exp.clientSector}
+                          value={item.details}
                           onChange={(e) => {
                             const value = e.target.value;
-                            setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, clientSector: value })) }));
+                            setStep3A((prev) => ({ ...prev, competencies: updateArrayItem(prev.competencies, index, (curr) => ({ ...curr, details: value })) }));
                             markDirty();
                           }}
                           placeholder=" "
                         />
-                        <span className="floating-field-label">Settore committente</span>
-                      </label>
-                      <label className={`floating-field ${exp.interventionType ? "has-value" : ""}`}>
-                        <input
-                          className="floating-input auth-input"
-                          value={exp.interventionType}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, interventionType: value })) }));
-                            markDirty();
-                          }}
-                          placeholder=" "
-                        />
-                        <span className="floating-field-label">Tipo intervento *</span>
-                      </label>
-                      <label className={`floating-field ${exp.mainTheme ? "has-value" : ""}`}>
-                        <input
-                          className="floating-input auth-input"
-                          value={exp.mainTheme}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, mainTheme: value })) }));
-                            markDirty();
-                          }}
-                          placeholder=" "
-                        />
-                        <span className="floating-field-label">Ambito principale *</span>
-                      </label>
-                      <label className={`floating-field ${exp.periodFrom ? "has-value" : ""}`}>
-                        <input
-                          className="floating-input auth-input"
-                          type="date"
-                          value={exp.periodFrom}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, periodFrom: value })) }));
-                            markDirty();
-                          }}
-                          placeholder=" "
-                        />
-                        <span className="floating-field-label">Periodo da</span>
-                      </label>
-                      <label className={`floating-field ${exp.periodTo ? "has-value" : ""}`}>
-                        <input
-                          className="floating-input auth-input"
-                          type="date"
-                          value={exp.periodTo}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, periodTo: value })) }));
-                            markDirty();
-                          }}
-                          placeholder=" "
-                        />
-                        <span className="floating-field-label">Periodo a</span>
-                      </label>
-                      <label className={`floating-field ${exp.durationHours ? "has-value" : ""}`}>
-                        <input
-                          className="floating-input auth-input"
-                          value={exp.durationHours}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, durationHours: value })) }));
-                            markDirty();
-                          }}
-                          placeholder=" "
-                        />
-                        <span className="floating-field-label">Durata ore</span>
-                      </label>
-                      <label className={`floating-field ${exp.participantsCount ? "has-value" : ""}`}>
-                        <input
-                          className="floating-input auth-input"
-                          value={exp.participantsCount}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, participantsCount: value })) }));
-                            markDirty();
-                          }}
-                          placeholder=" "
-                        />
-                        <span className="floating-field-label">Partecipanti</span>
+                        <span className="floating-field-label">Dettagli *</span>
                       </label>
                       <label className="floating-field has-value">
                         <select
                           className="floating-input auth-input"
-                          value={exp.deliveryMode}
+                          value={item.yearsBand}
                           onChange={(e) => {
                             const value = e.target.value;
-                            setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, deliveryMode: value })) }));
+                            setStep3A((prev) => ({ ...prev, competencies: updateArrayItem(prev.competencies, index, (curr) => ({ ...curr, yearsBand: value })) }));
                             markDirty();
                           }}
                         >
-                          <option value="">Modalita erogazione</option>
-                          <option value="IN_PRESENCE">In presenza</option>
-                          <option value="ONLINE">Online</option>
-                          <option value="BLENDED">Blended</option>
+                          <option value="">Esperienza *</option>
+                          <option value="LT_1">{"< 1 anno"}</option>
+                          <option value="Y1_3">1-3 anni</option>
+                          <option value="Y3_5">3-5 anni</option>
+                          <option value="Y5_10">5-10 anni</option>
+                          <option value="Y10_15">10-15 anni</option>
+                          <option value="GT_15">{"> 15 anni"}</option>
                         </select>
-                        <span className="floating-field-label">Modalita</span>
+                        <span className="floating-field-label">Fascia esperienza *</span>
                       </label>
-                      <label className="review-check-item">
-                        <input
-                          type="checkbox"
-                          checked={exp.fundedIntervention}
-                          onChange={(e) => {
-                            const value = e.target.checked;
-                            setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, fundedIntervention: value })) }));
-                            markDirty();
-                          }}
-                        />
-                        <span>Intervento finanziato</span>
-                      </label>
-                      <label className={`floating-field ${exp.fundName ? "has-value" : ""}`}>
+                      <button
+                        type="button"
+                        className="home-btn home-btn-secondary"
+                        onClick={() => {
+                          setStep3A((prev) => ({
+                            ...prev,
+                            competencies: prev.competencies.length > 1 ? prev.competencies.filter((_, i) => i !== index) : prev.competencies
+                          }));
+                          markDirty();
+                        }}
+                      >
+                        Rimuovi
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="home-btn home-btn-secondary"
+                    onClick={() => {
+                      setStep3A((prev) => ({
+                        ...prev,
+                        competencies: [...prev.competencies, { theme: "", details: "", yearsBand: "" }]
+                      }));
+                      markDirty();
+                    }}
+                  >
+                    + Aggiungi competenza
+                  </button>
+                </div>
+              </div>
+              {errors.competencies ? <p className="error">{errors.competencies}</p> : null}
+            </fieldset>
+
+            <fieldset className={fcrGroup("territorio")} disabled={fcr.active && fcr.isLocked("territorio")}>
+              <legend className="fcr-group-legend">Territorio operativo</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${step3A.consultingAreasCsv ? "has-value" : ""}`}>
+                  <input
+                    className="floating-input auth-input"
+                    value={step3A.consultingAreasCsv}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setStep3A((prev) => ({ ...prev, consultingAreasCsv: value }));
+                      markDirty();
+                    }}
+                    placeholder=" "
+                  />
+                  <span className="floating-field-label">Ambiti consulenza (CSV)</span>
+                </label>
+                <label className={`floating-field ${step3A.territoryRegionsCsv ? "has-value" : ""}`}>
+                  <input
+                    className="floating-input auth-input"
+                    value={step3A.territoryRegionsCsv}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setStep3A((prev) => ({ ...prev, territoryRegionsCsv: value }));
+                      markDirty();
+                    }}
+                    placeholder=" "
+                  />
+                  <span className="floating-field-label">Regioni operative (CSV)</span>
+                </label>
+                <label className={`floating-field ${step3A.territoryProvincesCsv ? "has-value" : ""}`}>
+                  <input
+                    className="floating-input auth-input"
+                    value={step3A.territoryProvincesCsv}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setStep3A((prev) => ({ ...prev, territoryProvincesCsv: value }));
+                      markDirty();
+                    }}
+                    placeholder=" "
+                  />
+                  <span className="floating-field-label">Province operative (CSV)</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset className={fcrGroup("lingue")} disabled={fcr.active && fcr.isLocked("lingue")}>
+              <legend className="fcr-group-legend">Lingue</legend>
+              <div className="home-step-card">
+                <div className="home-step-head">
+                  <span className="home-step-index">L</span>
+                  <h4>Lingue</h4>
+                </div>
+                <div className="stack">
+                  {step3A.languages.map((item, index) => (
+                    <div key={`lng-${index}`} className="grid-form">
+                      <label className={`floating-field ${item.language ? "has-value" : ""}`}>
                         <input
                           className="floating-input auth-input"
-                          value={exp.fundName}
+                          value={item.language}
                           onChange={(e) => {
                             const value = e.target.value;
-                            setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, fundName: value })) }));
+                            setStep3A((prev) => ({ ...prev, languages: updateArrayItem(prev.languages, index, (curr) => ({ ...curr, language: value })) }));
                             markDirty();
                           }}
                           placeholder=" "
                         />
-                        <span className="floating-field-label">Fondo (se finanziato)</span>
+                        <span className="floating-field-label">Lingua</span>
                       </label>
+                      <label className="floating-field has-value">
+                        <select
+                          className="floating-input auth-input"
+                          value={item.qcerLevel}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setStep3A((prev) => ({ ...prev, languages: updateArrayItem(prev.languages, index, (curr) => ({ ...curr, qcerLevel: value })) }));
+                            markDirty();
+                          }}
+                        >
+                          <option value="">QCER</option>
+                          <option value="A1">A1</option>
+                          <option value="A2">A2</option>
+                          <option value="B1">B1</option>
+                          <option value="B2">B2</option>
+                          <option value="C1">C1</option>
+                          <option value="C2">C2</option>
+                          <option value="NATIVE">Madrelingua</option>
+                        </select>
+                        <span className="floating-field-label">Livello QCER</span>
+                      </label>
+                      <button
+                        type="button"
+                        className="home-btn home-btn-secondary"
+                        onClick={() => {
+                          setStep3A((prev) => ({
+                            ...prev,
+                            languages: prev.languages.length > 1 ? prev.languages.filter((_, i) => i !== index) : prev.languages
+                          }));
+                          markDirty();
+                        }}
+                      >
+                        Rimuovi
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className="home-btn home-btn-secondary"
-                      onClick={() => {
-                        setStep3A((prev) => ({
-                          ...prev,
-                          experiences: prev.experiences.length > 1 ? prev.experiences.filter((_, i) => i !== index) : prev.experiences
-                        }));
+                  ))}
+                  <button
+                    type="button"
+                    className="home-btn home-btn-secondary"
+                    onClick={() => {
+                      setStep3A((prev) => ({ ...prev, languages: [...prev.languages, { language: "", qcerLevel: "" }] }));
+                      markDirty();
+                    }}
+                  >
+                    + Aggiungi lingua
+                  </button>
+                </div>
+              </div>
+              <div className="grid-form">
+                <label className={`floating-field ${step3A.teachingLanguagesCsv ? "has-value" : ""}`}>
+                  <input
+                    className="floating-input auth-input"
+                    value={step3A.teachingLanguagesCsv}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setStep3A((prev) => ({ ...prev, teachingLanguagesCsv: value }));
+                      markDirty();
+                    }}
+                    placeholder=" "
+                  />
+                  <span className="floating-field-label">Lingue docenza (CSV)</span>
+                </label>
+                <label className={`floating-field ${step3A.digitalToolsCsv ? "has-value" : ""}`}>
+                  <input
+                    className="floating-input auth-input"
+                    value={step3A.digitalToolsCsv}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setStep3A((prev) => ({ ...prev, digitalToolsCsv: value }));
+                      markDirty();
+                    }}
+                    placeholder=" "
+                  />
+                  <span className="floating-field-label">Strumenti digitali (CSV)</span>
+                </label>
+                <label className={`floating-field ${step3A.professionalNetworksCsv ? "has-value" : ""}`}>
+                  <input
+                    className="floating-input auth-input"
+                    value={step3A.professionalNetworksCsv}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setStep3A((prev) => ({ ...prev, professionalNetworksCsv: value }));
+                      markDirty();
+                    }}
+                    placeholder=" "
+                  />
+                  <span className="floating-field-label">Reti/associazioni (CSV)</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset className={fcrGroup("tariffe")} disabled={fcr.active && fcr.isLocked("tariffe")}>
+              <legend className="fcr-group-legend">Disponibilità e tariffe</legend>
+              <div className="home-step-card">
+                <div className="home-step-head">
+                  <span className="home-step-index">A</span>
+                  <h4>Disponibilita e tariffe</h4>
+                </div>
+                <label className="review-check-item">
+                  <input
+                    type="checkbox"
+                    checked={step3A.availability.travelAvailable}
+                    onChange={(e) => {
+                      const value = e.target.checked;
+                      setStep3A((prev) => ({ ...prev, availability: { ...prev.availability, travelAvailable: value } }));
+                      markDirty();
+                    }}
+                  />
+                  <span>Disponibile a trasferte</span>
+                </label>
+                <div className="grid-form">
+                  <label className={`floating-field ${step3A.availability.dailyRateRange ? "has-value" : ""}`}>
+                    <input
+                      className="floating-input auth-input"
+                      value={step3A.availability.dailyRateRange}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setStep3A((prev) => ({ ...prev, availability: { ...prev.availability, dailyRateRange: value } }));
                         markDirty();
                       }}
-                    >
-                      Rimuovi esperienza
-                    </button>
-                    {errors[`exp_${index}`] ? <p className="error">{errors[`exp_${index}`]}</p> : null}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="home-btn home-btn-secondary"
-                  disabled={step3A.experiences.length >= 5}
-                  onClick={() => {
-                    setStep3A((prev) => ({
-                      ...prev,
-                      experiences: [
-                        ...prev.experiences,
-                        {
-                          clientName: "",
-                          clientSector: "",
-                          interventionType: "",
-                          mainTheme: "",
-                          periodFrom: "",
-                          periodTo: "",
-                          durationHours: "",
-                          participantsCount: "",
-                          deliveryMode: "",
-                          fundedIntervention: false,
-                          fundName: ""
-                        }
-                      ]
-                    }));
-                    markDirty();
-                  }}
-                >
-                  + Aggiungi esperienza
-                </button>
+                      placeholder=" "
+                    />
+                    <span className="floating-field-label">Tariffa giornaliera (range)</span>
+                  </label>
+                  <label className={`floating-field ${step3A.availability.hourlyRateRange ? "has-value" : ""}`}>
+                    <input
+                      className="floating-input auth-input"
+                      value={step3A.availability.hourlyRateRange}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setStep3A((prev) => ({ ...prev, availability: { ...prev.availability, hourlyRateRange: value } }));
+                        markDirty();
+                      }}
+                      placeholder=" "
+                    />
+                    <span className="floating-field-label">Tariffa oraria (range)</span>
+                  </label>
+                </div>
               </div>
-            </div>
+            </fieldset>
 
-            {errors.educationHighestTitle ? <p className="error">{errors.educationHighestTitle}</p> : null}
-            {errors.educationStudyArea ? <p className="error">{errors.educationStudyArea}</p> : null}
-            {errors.educationGraduationYear ? <p className="error">{errors.educationGraduationYear}</p> : null}
-            {errors.competencies ? <p className="error">{errors.competencies}</p> : null}
-            {errors.experiences ? <p className="error">{errors.experiences}</p> : null}
+            <fieldset className={fcrGroup("esperienze")} disabled={fcr.active && fcr.isLocked("esperienze")}>
+              <legend className="fcr-group-legend">Esperienze formative</legend>
+              <div className="home-step-card">
+                <div className="home-step-head">
+                  <span className="home-step-index">E</span>
+                  <h4>Esperienze formative (max 5)</h4>
+                </div>
+                <div className="stack">
+                  {step3A.experiences.map((exp, index) => (
+                    <div key={`exp-${index}`} className="home-step-card">
+                      <div className="grid-form">
+                        <label className={`floating-field ${exp.clientName ? "has-value" : ""}`}>
+                          <input className="floating-input auth-input" value={exp.clientName} onChange={(e) => { const value = e.target.value; setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, clientName: value })) })); markDirty(); }} placeholder=" " />
+                          <span className="floating-field-label">Committente *</span>
+                        </label>
+                        <label className={`floating-field ${exp.clientSector ? "has-value" : ""}`}>
+                          <input className="floating-input auth-input" value={exp.clientSector} onChange={(e) => { const value = e.target.value; setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, clientSector: value })) })); markDirty(); }} placeholder=" " />
+                          <span className="floating-field-label">Settore committente</span>
+                        </label>
+                        <label className={`floating-field ${exp.interventionType ? "has-value" : ""}`}>
+                          <input className="floating-input auth-input" value={exp.interventionType} onChange={(e) => { const value = e.target.value; setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, interventionType: value })) })); markDirty(); }} placeholder=" " />
+                          <span className="floating-field-label">Tipo intervento *</span>
+                        </label>
+                        <label className={`floating-field ${exp.mainTheme ? "has-value" : ""}`}>
+                          <input className="floating-input auth-input" value={exp.mainTheme} onChange={(e) => { const value = e.target.value; setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, mainTheme: value })) })); markDirty(); }} placeholder=" " />
+                          <span className="floating-field-label">Ambito principale *</span>
+                        </label>
+                        <label className={`floating-field ${exp.periodFrom ? "has-value" : ""}`}>
+                          <input className="floating-input auth-input" type="date" value={exp.periodFrom} onChange={(e) => { const value = e.target.value; setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, periodFrom: value })) })); markDirty(); }} placeholder=" " />
+                          <span className="floating-field-label">Periodo da</span>
+                        </label>
+                        <label className={`floating-field ${exp.periodTo ? "has-value" : ""}`}>
+                          <input className="floating-input auth-input" type="date" value={exp.periodTo} onChange={(e) => { const value = e.target.value; setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, periodTo: value })) })); markDirty(); }} placeholder=" " />
+                          <span className="floating-field-label">Periodo a</span>
+                        </label>
+                        <label className={`floating-field ${exp.durationHours ? "has-value" : ""}`}>
+                          <input className="floating-input auth-input" value={exp.durationHours} onChange={(e) => { const value = e.target.value; setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, durationHours: value })) })); markDirty(); }} placeholder=" " />
+                          <span className="floating-field-label">Durata ore</span>
+                        </label>
+                        <label className={`floating-field ${exp.participantsCount ? "has-value" : ""}`}>
+                          <input className="floating-input auth-input" value={exp.participantsCount} onChange={(e) => { const value = e.target.value; setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, participantsCount: value })) })); markDirty(); }} placeholder=" " />
+                          <span className="floating-field-label">Partecipanti</span>
+                        </label>
+                        <label className="floating-field has-value">
+                          <select className="floating-input auth-input" value={exp.deliveryMode} onChange={(e) => { const value = e.target.value; setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, deliveryMode: value })) })); markDirty(); }}>
+                            <option value="">Modalita erogazione</option>
+                            <option value="IN_PRESENCE">In presenza</option>
+                            <option value="ONLINE">Online</option>
+                            <option value="BLENDED">Blended</option>
+                          </select>
+                          <span className="floating-field-label">Modalita</span>
+                        </label>
+                        <label className="review-check-item">
+                          <input type="checkbox" checked={exp.fundedIntervention} onChange={(e) => { const value = e.target.checked; setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, fundedIntervention: value })) })); markDirty(); }} />
+                          <span>Intervento finanziato</span>
+                        </label>
+                        <label className={`floating-field ${exp.fundName ? "has-value" : ""}`}>
+                          <input className="floating-input auth-input" value={exp.fundName} onChange={(e) => { const value = e.target.value; setStep3A((prev) => ({ ...prev, experiences: updateArrayItem(prev.experiences, index, (curr) => ({ ...curr, fundName: value })) })); markDirty(); }} placeholder=" " />
+                          <span className="floating-field-label">Fondo (se finanziato)</span>
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        className="home-btn home-btn-secondary"
+                        onClick={() => {
+                          setStep3A((prev) => ({
+                            ...prev,
+                            experiences: prev.experiences.length > 1 ? prev.experiences.filter((_, i) => i !== index) : prev.experiences
+                          }));
+                          markDirty();
+                        }}
+                      >
+                        Rimuovi esperienza
+                      </button>
+                      {errors[`exp_${index}`] ? <p className="error">{errors[`exp_${index}`]}</p> : null}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="home-btn home-btn-secondary"
+                    disabled={step3A.experiences.length >= 5}
+                    onClick={() => {
+                      setStep3A((prev) => ({
+                        ...prev,
+                        experiences: [
+                          ...prev.experiences,
+                          { clientName: "", clientSector: "", interventionType: "", mainTheme: "", periodFrom: "", periodTo: "", durationHours: "", participantsCount: "", deliveryMode: "", fundedIntervention: false, fundName: "" }
+                        ]
+                      }));
+                      markDirty();
+                    }}
+                  >
+                    + Aggiungi esperienza
+                  </button>
+                </div>
+              </div>
+              {errors.experiences ? <p className="error">{errors.experiences}</p> : null}
+            </fieldset>
           </>
         ) : null}
 
         {branchKey === "S3B" ? (
           <>
             <h3 className="revamp-step-subtitle"><Wrench className="h-4 w-4" /> {t("revamp.step3.s3b.sectionTitle")}</h3>
-            <div className="grid-form">
-              <label className={`floating-field ${step3B.professionalOrder ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3B.professionalOrder}
-                  onChange={(e) => {
-                    setStep3B((prev) => ({ ...prev, professionalOrder: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Ordine professionale *</span>
-              </label>
-              <label className={`floating-field ${step3B.highestTitle ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3B.highestTitle}
-                  onChange={(e) => {
-                    setStep3B((prev) => ({ ...prev, highestTitle: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Titolo di studio *</span>
-              </label>
-              <label className={`floating-field ${step3B.studyArea ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3B.studyArea}
-                  onChange={(e) => {
-                    setStep3B((prev) => ({ ...prev, studyArea: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Ambito di studio *</span>
-              </label>
-              <label className={`floating-field ${step3B.experienceBand ? "has-value" : ""}`}>
-                <select
-                  className="floating-input auth-input"
-                  value={step3B.experienceBand}
-                  onChange={(e) => {
-                    setStep3B((prev) => ({ ...prev, experienceBand: e.target.value }));
-                    markDirty();
-                  }}
-                >
-                  <option value="">Fascia esperienza</option>
-                  <option value="Y0_3">0-3 anni</option>
-                  <option value="Y4_7">4-7 anni</option>
-                  <option value="Y8_15">8-15 anni</option>
-                  <option value="Y15_PLUS">oltre 15 anni</option>
-                </select>
-                <span className="floating-field-label">Fascia esperienza *</span>
-              </label>
-              <label className={`floating-field ${step3B.hourlyRateRange ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3B.hourlyRateRange}
-                  onChange={(e) => {
-                    setStep3B((prev) => ({ ...prev, hourlyRateRange: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Range tariffa oraria *</span>
-              </label>
-              <label className={`floating-field ${step3B.territory.regionsCsv ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3B.territory.regionsCsv}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStep3B((prev) => ({ ...prev, territory: { ...prev.territory, regionsCsv: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Regioni operative (CSV) *</span>
-              </label>
-              <label className={`floating-field ${step3B.territory.provincesCsv ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={step3B.territory.provincesCsv}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setStep3B((prev) => ({ ...prev, territory: { ...prev.territory, provincesCsv: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Province operative (CSV)</span>
-              </label>
-            </div>
-            <div className="home-step-card">
-              <div className="home-step-head">
-                <span className="home-step-index">S</span>
-                <h4>Servizi offerti *</h4>
+            <fieldset className={fcrGroup("istruzione")} disabled={fcr.active && fcr.isLocked("istruzione")}>
+              <legend className="fcr-group-legend">Titolo di studio</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${step3B.professionalOrder ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={step3B.professionalOrder} onChange={(e) => { setStep3B((prev) => ({ ...prev, professionalOrder: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Ordine professionale *</span>
+                </label>
+                <label className={`floating-field ${step3B.highestTitle ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={step3B.highestTitle} onChange={(e) => { setStep3B((prev) => ({ ...prev, highestTitle: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Titolo di studio *</span>
+                </label>
+                <label className={`floating-field ${step3B.studyArea ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={step3B.studyArea} onChange={(e) => { setStep3B((prev) => ({ ...prev, studyArea: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Ambito di studio *</span>
+                </label>
+                <label className={`floating-field ${step3B.experienceBand ? "has-value" : ""}`}>
+                  <select className="floating-input auth-input" value={step3B.experienceBand} onChange={(e) => { setStep3B((prev) => ({ ...prev, experienceBand: e.target.value })); markDirty(); }}>
+                    <option value="">Fascia esperienza</option>
+                    <option value="Y0_3">0-3 anni</option>
+                    <option value="Y4_7">4-7 anni</option>
+                    <option value="Y8_15">8-15 anni</option>
+                    <option value="Y15_PLUS">oltre 15 anni</option>
+                  </select>
+                  <span className="floating-field-label">Fascia esperienza *</span>
+                </label>
+                <label className={`floating-field ${step3B.hourlyRateRange ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={step3B.hourlyRateRange} onChange={(e) => { setStep3B((prev) => ({ ...prev, hourlyRateRange: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Range tariffa oraria *</span>
+                </label>
               </div>
-              <div className="grid-form" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                {S3B_SERVICE_OPTIONS.map((service) => {
-                  const checked = step3B.services.includes(service);
-                  return (
-                    <label key={service} className="review-check-item">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          setStep3B((prev) => ({
-                            ...prev,
-                            services: checked
-                              ? prev.services.filter((item) => item !== service)
-                              : [...prev.services, service]
-                          }));
-                          markDirty();
-                        }}
-                      />
-                      <span>{service}</span>
-                    </label>
-                  );
-                })}
+              {errors.professionalOrder ? <p className="error">{errors.professionalOrder}</p> : null}
+              {errors.highestTitle ? <p className="error">{errors.highestTitle}</p> : null}
+              {errors.studyArea ? <p className="error">{errors.studyArea}</p> : null}
+              {errors.experienceBand ? <p className="error">{errors.experienceBand}</p> : null}
+              {errors.hourlyRateRange ? <p className="error">{errors.hourlyRateRange}</p> : null}
+            </fieldset>
+
+            <fieldset className={fcrGroup("territorio")} disabled={fcr.active && fcr.isLocked("territorio")}>
+              <legend className="fcr-group-legend">Territorio operativo</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${step3B.territory.regionsCsv ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={step3B.territory.regionsCsv} onChange={(e) => { const value = e.target.value; setStep3B((prev) => ({ ...prev, territory: { ...prev.territory, regionsCsv: value } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Regioni operative (CSV) *</span>
+                </label>
+                <label className={`floating-field ${step3B.territory.provincesCsv ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={step3B.territory.provincesCsv} onChange={(e) => { const value = e.target.value; setStep3B((prev) => ({ ...prev, territory: { ...prev.territory, provincesCsv: value } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Province operative (CSV)</span>
+                </label>
               </div>
-            </div>
-            <div className="home-step-card">
-              <div className="home-step-head">
-                <span className="home-step-index">C</span>
-                <h4>Certificazioni specifiche</h4>
+              {errors.territory ? <p className="error">{errors.territory}</p> : null}
+            </fieldset>
+
+            <fieldset className={fcrGroup("servizi_offerti")} disabled={fcr.active && fcr.isLocked("servizi_offerti")}>
+              <legend className="fcr-group-legend">Servizi offerti</legend>
+              <div className="home-step-card">
+                <div className="home-step-head">
+                  <span className="home-step-index">S</span>
+                  <h4>Servizi offerti *</h4>
+                </div>
+                <div className="grid-form" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+                  {S3B_SERVICE_OPTIONS.map((service) => {
+                    const checked = step3B.services.includes(service);
+                    return (
+                      <label key={service} className="review-check-item">
+                        <input type="checkbox" checked={checked} onChange={() => { setStep3B((prev) => ({ ...prev, services: checked ? prev.services.filter((item) => item !== service) : [...prev.services, service] })); markDirty(); }} />
+                        <span>{service}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="stack">
-                {step3B.specificCertifications.map((certification, index) => (
-                  <div key={`s3b-cert-${index}`} className="grid-form">
-                    <label className={`floating-field ${certification.name ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={certification.name}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setStep3B((prev) => ({
-                            ...prev,
-                            specificCertifications: updateArrayItem(prev.specificCertifications, index, (curr) => ({ ...curr, name: value }))
-                          }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">Nome certificazione</span>
-                    </label>
-                    <label className={`floating-field ${certification.issuer ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={certification.issuer}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setStep3B((prev) => ({
-                            ...prev,
-                            specificCertifications: updateArrayItem(prev.specificCertifications, index, (curr) => ({ ...curr, issuer: value }))
-                          }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">Ente</span>
-                    </label>
-                    <label className={`floating-field ${certification.year ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={certification.year}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setStep3B((prev) => ({
-                            ...prev,
-                            specificCertifications: updateArrayItem(prev.specificCertifications, index, (curr) => ({ ...curr, year: value }))
-                          }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">Anno</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="home-btn home-btn-secondary"
-                      onClick={() => {
-                        setStep3B((prev) => ({
-                          ...prev,
-                          specificCertifications: prev.specificCertifications.length > 1
-                            ? prev.specificCertifications.filter((_, idx) => idx !== index)
-                            : prev.specificCertifications
-                        }));
-                        markDirty();
-                      }}
-                    >
-                      Rimuovi
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="home-btn home-btn-secondary"
-                  onClick={() => {
-                    setStep3B((prev) => ({
-                      ...prev,
-                      specificCertifications: [...prev.specificCertifications, { name: "", issuer: "", year: "" }]
-                    }));
-                    markDirty();
-                  }}
-                >
-                  + Aggiungi certificazione
-                </button>
+              {errors.services ? <p className="error">{errors.services}</p> : null}
+            </fieldset>
+
+            <fieldset className={fcrGroup("cert_specifiche")} disabled={fcr.active && fcr.isLocked("cert_specifiche")}>
+              <legend className="fcr-group-legend">Certificazioni specifiche</legend>
+              <div className="home-step-card">
+                <div className="home-step-head">
+                  <span className="home-step-index">C</span>
+                  <h4>Certificazioni specifiche</h4>
+                </div>
+                <div className="stack">
+                  {step3B.specificCertifications.map((certification, index) => (
+                    <div key={`s3b-cert-${index}`} className="grid-form">
+                      <label className={`floating-field ${certification.name ? "has-value" : ""}`}>
+                        <input className="floating-input auth-input" value={certification.name} onChange={(e) => { const value = e.target.value; setStep3B((prev) => ({ ...prev, specificCertifications: updateArrayItem(prev.specificCertifications, index, (curr) => ({ ...curr, name: value })) })); markDirty(); }} placeholder=" " />
+                        <span className="floating-field-label">Nome certificazione</span>
+                      </label>
+                      <label className={`floating-field ${certification.issuer ? "has-value" : ""}`}>
+                        <input className="floating-input auth-input" value={certification.issuer} onChange={(e) => { const value = e.target.value; setStep3B((prev) => ({ ...prev, specificCertifications: updateArrayItem(prev.specificCertifications, index, (curr) => ({ ...curr, issuer: value })) })); markDirty(); }} placeholder=" " />
+                        <span className="floating-field-label">Ente</span>
+                      </label>
+                      <label className={`floating-field ${certification.year ? "has-value" : ""}`}>
+                        <input className="floating-input auth-input" value={certification.year} onChange={(e) => { const value = e.target.value; setStep3B((prev) => ({ ...prev, specificCertifications: updateArrayItem(prev.specificCertifications, index, (curr) => ({ ...curr, year: value })) })); markDirty(); }} placeholder=" " />
+                        <span className="floating-field-label">Anno</span>
+                      </label>
+                      <button type="button" className="home-btn home-btn-secondary" onClick={() => { setStep3B((prev) => ({ ...prev, specificCertifications: prev.specificCertifications.length > 1 ? prev.specificCertifications.filter((_, idx) => idx !== index) : prev.specificCertifications })); markDirty(); }}>Rimuovi</button>
+                    </div>
+                  ))}
+                  <button type="button" className="home-btn home-btn-secondary" onClick={() => { setStep3B((prev) => ({ ...prev, specificCertifications: [...prev.specificCertifications, { name: "", issuer: "", year: "" }] })); markDirty(); }}>+ Aggiungi certificazione</button>
+                </div>
               </div>
-            </div>
-            {errors.professionalOrder ? <p className="error">{errors.professionalOrder}</p> : null}
-            {errors.highestTitle ? <p className="error">{errors.highestTitle}</p> : null}
-            {errors.studyArea ? <p className="error">{errors.studyArea}</p> : null}
-            {errors.experienceBand ? <p className="error">{errors.experienceBand}</p> : null}
-            {errors.services ? <p className="error">{errors.services}</p> : null}
-            {errors.territory ? <p className="error">{errors.territory}</p> : null}
-            {errors.hourlyRateRange ? <p className="error">{errors.hourlyRateRange}</p> : null}
+            </fieldset>
           </>
         ) : null}
 
         {branchKey === "S3" ? (
           <>
-            <h3 className="revamp-step-subtitle"><Building2 className="h-4 w-4" /> {t("revamp.step3.s3.sectionTitle")}</h3>
-            <p className="subtle">Seleziona i servizi per categoria. Per ogni categoria attivata, la descrizione e obbligatoria.</p>
-            <div className="stack">
-              {SERVICE_CATEGORIES.map((category) => {
-                const selected = selectedServicesByCategory[category.id] ?? [];
-                const description = serviceDescriptionsByCategory[category.id] ?? "";
-                const isOpen = openCategoryId === category.id;
-                const hasDescriptionError = Boolean(errors[`servicesDescription_${category.id}`]);
-                return (
-                  <div key={category.id} className="home-step-card">
-                    <button
-                      type="button"
-                      className="home-btn home-btn-secondary"
-                      onClick={() => setOpenCategoryId((prev) => (prev === category.id ? "" : category.id))}
-                    >
-                      <span>{category.label}</span>
-                      <span>Selezionati: {selected.length}</span>
-                    </button>
-                    {isOpen ? (
-                      <div className="stack" style={{ marginTop: "0.75rem" }}>
-                        <div className="grid-form" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))" }}>
-                          {category.services.map((service) => {
-                            const checked = selected.includes(service.id);
-                            return (
-                              <label key={service.id} className="home-step-card" style={{ padding: "0.5rem 0.75rem" }}>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleCompanyService(category.id, service.id)}
-                                />
-                                <span style={{ marginLeft: "0.5rem" }}>{service.label}</span>
-                              </label>
-                            );
-                          })}
+            <fieldset className={fcrGroup("servizi_cat")} disabled={fcr.active && fcr.isLocked("servizi_cat")}>
+              <legend className="fcr-group-legend">Categorie di servizi</legend>
+              <h3 className="revamp-step-subtitle"><Building2 className="h-4 w-4" /> {t("revamp.step3.s3.sectionTitle")}</h3>
+              <p className="subtle">Seleziona i servizi per categoria. Per ogni categoria attivata, la descrizione e obbligatoria.</p>
+              <div className="stack">
+                {SERVICE_CATEGORIES.map((category) => {
+                  const selected = selectedServicesByCategory[category.id] ?? [];
+                  const description = serviceDescriptionsByCategory[category.id] ?? "";
+                  const isOpen = openCategoryId === category.id;
+                  const hasDescriptionError = Boolean(errors[`servicesDescription_${category.id}`]);
+                  return (
+                    <div key={category.id} className="home-step-card">
+                      <button
+                        type="button"
+                        className="home-btn home-btn-secondary"
+                        onClick={() => setOpenCategoryId((prev) => (prev === category.id ? "" : category.id))}
+                      >
+                        <span>{category.label}</span>
+                        <span>Selezionati: {selected.length}</span>
+                      </button>
+                      {isOpen ? (
+                        <div className="stack" style={{ marginTop: "0.75rem" }}>
+                          <div className="grid-form" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))" }}>
+                            {category.services.map((service) => {
+                              const checked = selected.includes(service.id);
+                              return (
+                                <label key={service.id} className="home-step-card" style={{ padding: "0.5rem 0.75rem" }}>
+                                  <input type="checkbox" checked={checked} onChange={() => toggleCompanyService(category.id, service.id)} />
+                                  <span style={{ marginLeft: "0.5rem" }}>{service.label}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <label className={`floating-field ${description ? "has-value" : ""}`}>
+                            <textarea
+                              className="floating-input auth-input"
+                              value={description}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setServiceDescriptionsByCategory((prev) => ({ ...prev, [category.id]: value }));
+                                markDirty();
+                              }}
+                              placeholder=" "
+                              rows={3}
+                              maxLength={400}
+                            />
+                            <span className="floating-field-label">Descrizione servizi selezionati ({category.id})</span>
+                          </label>
+                          <p className="subtle">{description.length}/400</p>
+                          {hasDescriptionError ? <p className="error">{errors[`servicesDescription_${category.id}`]}</p> : null}
                         </div>
-                        <label className={`floating-field ${description ? "has-value" : ""}`}>
-                          <textarea
-                            className="floating-input auth-input"
-                            value={description}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setServiceDescriptionsByCategory((prev) => ({ ...prev, [category.id]: value }));
-                              markDirty();
-                            }}
-                            placeholder=" "
-                            rows={3}
-                            maxLength={400}
-                          />
-                          <span className="floating-field-label">Descrizione servizi selezionati ({category.id})</span>
-                        </label>
-                        <p className="subtle">{description.length}/400</p>
-                        {hasDescriptionError ? <p className="error">{errors[`servicesDescription_${category.id}`]}</p> : null}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-            {errors.serviceCategoriesCsv ? <p className="error">{errors.serviceCategoriesCsv}</p> : null}
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+              {errors.serviceCategoriesCsv ? <p className="error">{errors.serviceCategoriesCsv}</p> : null}
+            </fieldset>
           </>
         ) : null}
 
         <div className="revamp-step-actions">
-          <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/2`}>
-            {t("revamp.step3.backToStep2")}
-          </Link>
-          <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/4`}>
-            {t("revamp.step3.goToStep4")}
-          </Link>
-          <button type="submit" className="home-btn home-btn-primary" disabled={saveState === "saving"}>
-            <Save className="h-4 w-4" />
-            <span>{saveState === "saving" ? t("revamp.step.common.saving") : t("revamp.step.common.saveSection")}</span>
-          </button>
+          {!fcr.active && (
+            <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/2`}>
+              {t("revamp.step3.backToStep2")}
+            </Link>
+          )}
+          {!fcr.active && (
+            <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/4`}>
+              {t("revamp.step3.goToStep4")}
+            </Link>
+          )}
+          {!fcr.active && (
+            <button type="submit" className="home-btn home-btn-primary" disabled={saveState === "saving"}>
+              <Save className="h-4 w-4" />
+              <span>{saveState === "saving" ? t("revamp.step.common.saving") : t("revamp.step.common.saveSection")}</span>
+            </button>
+          )}
         </div>
       </form>
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
     </section>
   );
 }

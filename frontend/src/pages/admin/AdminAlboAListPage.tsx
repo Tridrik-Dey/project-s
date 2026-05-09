@@ -266,6 +266,9 @@ export function AdminAlboAListPage() {
                     <div className="admin-albo-avatar">{initials(name)}</div>
                     <div>
                       <strong>{name}</strong>
+                      {row.pendingFieldChange ? <span className="queue-assign-badge">Modifica dati in revisione</span> : null}
+                      {row.pendingDocumentRenewal ? <span className="queue-assign-badge">Rinnovo documenti</span> : null}
+                      {row.expiredDocumentLabels && row.expiredDocumentLabels.length > 0 ? <span className="queue-assign-badge">Documenti scaduti</span> : null}
                       <p className="subtle">{row.publicSummary || "—"}</p>
                     </div>
                   </div>

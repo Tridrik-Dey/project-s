@@ -179,6 +179,19 @@ public class RevampApplicationController {
         ));
     }
 
+    @PostMapping("/{applicationId}/integration-response/items/{itemCode}/complete")
+    public ResponseEntity<ApiResponse<RevampApplicationSummaryDto>> completeIntegrationItem(
+            @PathVariable UUID applicationId,
+            @PathVariable String itemCode
+    ) {
+        revampAccessGuard.requireWriteEnabled();
+        User currentUser = getCurrentUser();
+        return ResponseEntity.ok(ApiResponse.ok(
+                "Integration item completed",
+                applicationService.completeIntegrationItem(applicationId, currentUser.getId(), itemCode)
+        ));
+    }
+
     private User getCurrentUser() {
         return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }

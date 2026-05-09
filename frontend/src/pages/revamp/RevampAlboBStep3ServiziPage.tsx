@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, ArrowRight, CheckCircle, Save } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
-import { answerRevampIntegrationRequest, getMyLatestRevampApplication, getRevampApplicationSections, saveRevampApplicationSection } from "../../api/revampApplicationApi";
+import { getMyLatestRevampApplication, getRevampApplicationSections, saveRevampApplicationSection } from "../../api/revampApplicationApi";
 import { loadRevampApplicationIdForRegistry, saveRevampApplicationIdForRegistry } from "../../utils/revampApplicationSession";
 import { clearRevampIntegrationEditSession, isRevampIntegrationEditFor } from "../../utils/revampIntegrationEditSession";
+import { completeRevampIntegrationEdit } from "../../utils/revampIntegrationCompletion";
 
 const GREEN = "#1a5c3a";
 const MUTED = "#6b7280";
@@ -242,7 +243,7 @@ export function RevampAlboBStep3ServiziPage() {
     }
     if (integrationEdit && auth?.token && savedAppId) {
       try {
-        await answerRevampIntegrationRequest(savedAppId, auth.token);
+        await completeRevampIntegrationEdit(savedAppId, auth.token, integrationEdit);
         clearRevampIntegrationEditSession();
       } catch {
         window.alert("Invio integrazione non riuscito. Controlla i dati e riprova.");

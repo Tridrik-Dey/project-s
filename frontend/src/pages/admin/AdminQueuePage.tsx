@@ -1,16 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowUpDown, CalendarDays, CheckCircle2, Clock3, ClipboardList, Hand, ListChecks, RefreshCw, Search, X, XCircle } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { DashboardActivityEvent } from "../../api/adminDashboardEventsApi";
 import { HttpError } from "../../api/http";
 import { assignAdminReviewCase, getAdminDecidedQueue, getAdminReviewQueue, type AdminReviewCaseSummary } from "../../api/adminReviewApi";
+import {
+  adminRejectChangeRequest,
+  adminUnlockSection,
+  listPendingAdminFieldChangeRequests,
+  type AdminPendingFieldChangeRequest
+} from "../../api/fieldChangeRequestApi";
 import { useAdminGovernanceRole } from "../../hooks/useAdminGovernanceRole";
 import { useAdminRealtimeRefresh } from "../../hooks/useAdminRealtimeRefresh";
 import { useAuth } from "../../auth/AuthContext";
 import { AppToast } from "../../components/ui/toast";
 import { AdminCandidatureShell } from "./AdminCandidatureShell";
 
-type QueueTab = "ALL" | "PENDING_ASSIGNMENT" | "WAITING_SUPPLIER_RESPONSE" | "IN_PROGRESS" | "READY_FOR_DECISION" | "DECIDED";
+type QueueTab = "ALL" | "PENDING_ASSIGNMENT" | "WAITING_SUPPLIER_RESPONSE" | "IN_PROGRESS" | "READY_FOR_DECISION" | "DECIDED" | "FIELD_CHANGE_REQUESTS";
 type QueueSort = "URGENCY" | "QUEUE_DAYS" | "RECEIVED_AT";
 
 function toDaysInQueue(updatedAt: string): number {
@@ -89,14 +95,37 @@ function shouldRefreshQueue(event: DashboardActivityEvent): boolean {
   return (
     key.startsWith("revamp.review.")
     || key.startsWith("revamp.application.")
+    || key.startsWith("fcr.")
     || key.includes("integration")
     || event.entityType === "REVAMP_APPLICATION"
+    || event.entityType === "FIELD_CHANGE_REQUEST"
   );
+}
+
+function fieldChangeGroupLabel(sectionKey: string | null | undefined): string {
+  const normalized = (sectionKey ?? "").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    ateco_b: "Codici ATECO",
+    ateco: "Codici ATECO",
+    dimensione: "Dimensione aziendale",
+    regioni_op: "Regioni operative",
+    acc_formazione: "Accreditamento formazione",
+    terzo_settore: "Terzo settore",
+    tipo_prof: "Tipologia professionale",
+    comp_secondarie: "Competenze secondarie",
+    dati_personali: "Dati personali",
+    dati_fiscali: "Dati fiscali",
+    indirizzo: "Indirizzo",
+    contatti: "Contatti",
+    foto_profilo: "Foto profilo"
+  };
+  return labels[normalized] ?? (sectionKey || "Modifica dati");
 }
 
 
 export function AdminQueuePage() {
   const { auth } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const token = auth?.token ?? "";
   const { adminRole } = useAdminGovernanceRole();
   const [rows, setRows] = useState<AdminReviewCaseSummary[]>([]);
@@ -108,11 +137,21 @@ export function AdminQueuePage() {
   const [recentlyAssigned, setRecentlyAssigned] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null);
   const [decidedRows, setDecidedRows] = useState<AdminReviewCaseSummary[]>([]);
+  const [pendingFieldChanges, setPendingFieldChanges] = useState<AdminPendingFieldChangeRequest[]>([]);
   const [decidedLoading, setDecidedLoading] = useState(false);
+  const [fieldChangesLoading, setFieldChangesLoading] = useState(false);
+  const [busyFcrFor, setBusyFcrFor] = useState<string | null>(null);
   const [searchQ, setSearchQ] = useState("");
   const queueRefreshInFlightRef = useRef(false);
   const queueRefreshQueuedRef = useRef(false);
   const canAssign = adminRole === "SUPER_ADMIN" || adminRole === "RESPONSABILE_ALBO" || adminRole === "REVISORE";
+  const canManageFcr = adminRole === "SUPER_ADMIN" || adminRole === "RESPONSABILE_ALBO";
+
+  useEffect(() => {
+    if (searchParams.get("tab") === "modifiche-dati") {
+      setActiveTab(canManageFcr ? "FIELD_CHANGE_REQUESTS" : "ALL");
+    }
+  }, [canManageFcr, searchParams]);
 
   const loadQueue = useCallback(async (showLoading = true) => {
     if (!token) return;
@@ -156,14 +195,35 @@ export function AdminQueuePage() {
     }
   }, [token]);
 
+  const loadPendingFieldChanges = useCallback(async () => {
+    if (!token || !canManageFcr) {
+      setPendingFieldChanges([]);
+      return;
+    }
+    setFieldChangesLoading(true);
+    try {
+      const data = await listPendingAdminFieldChangeRequests(token);
+      setPendingFieldChanges([...data].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)));
+    } catch (error) {
+      const message = error instanceof HttpError ? error.message : "Caricamento richieste modifica dati non riuscito.";
+      setToast({ message, type: "error" });
+      setPendingFieldChanges([]);
+    } finally {
+      setFieldChangesLoading(false);
+    }
+  }, [canManageFcr, token]);
+
   useEffect(() => {
     void loadQueue(true);
     void loadDecided();
-  }, [loadQueue, loadDecided]);
+    if (canManageFcr) void loadPendingFieldChanges();
+  }, [canManageFcr, loadQueue, loadDecided, loadPendingFieldChanges]);
 
   useEffect(() => {
     if (activeTab === "DECIDED") void loadDecided();
-  }, [activeTab, loadDecided]);
+    if (activeTab === "FIELD_CHANGE_REQUESTS" && canManageFcr) void loadPendingFieldChanges();
+    if (activeTab === "FIELD_CHANGE_REQUESTS" && !canManageFcr) setActiveTab("ALL");
+  }, [activeTab, canManageFcr, loadDecided, loadPendingFieldChanges]);
 
   useAdminRealtimeRefresh({
     token,
@@ -171,6 +231,7 @@ export function AdminQueuePage() {
     onRefresh: () => {
       loadQueue(false);
       if (activeTab === "DECIDED") void loadDecided();
+      if (canManageFcr) void loadPendingFieldChanges();
     }
   });
 
@@ -197,12 +258,23 @@ export function AdminQueuePage() {
         if (!Number.isFinite(ts)) return false;
         const date = new Date(ts);
         return date.getMonth() === month && date.getFullYear() === year;
-      }).length
+      }).length,
+      pendingFieldChanges: pendingFieldChanges.length
     };
-  }, [rows, decidedRows]);
+  }, [rows, decidedRows, pendingFieldChanges]);
 
 
   const queueKpis = [
+    ...(canManageFcr ? [{
+      id: "field-change",
+      title: "Modifiche dati",
+      value: counters.pendingFieldChanges,
+      icon: <ListChecks className="h-4 w-4" />,
+      trend: "da sbloccare",
+      level: counters.pendingFieldChanges === 0 ? "ok" : "attention",
+      levelLabel: counters.pendingFieldChanges === 0 ? "Normale" : "Richieste",
+      tone: "attention"
+    }] : []),
     {
       id: "pending",
       title: "In attesa revisione",
@@ -299,6 +371,21 @@ export function AdminQueuePage() {
     });
   }, [activeTab, rows, decidedRows, sortBy, sortDir]);
 
+  const filteredFieldChanges = useMemo(() => {
+    const term = searchQ.trim().toLowerCase();
+    const selected = term ? pendingFieldChanges.filter((item) => {
+      const code = (item.protocolCode?.trim() || `APP-${item.applicationId.slice(0, 8).toUpperCase()}`).toLowerCase();
+      const name = (item.supplierDisplayName ?? "").toLowerCase();
+      const email = (item.supplierEmail ?? "").toLowerCase();
+      const group = fieldChangeGroupLabel(item.sectionKey).toLowerCase();
+      return code.includes(term) || name.includes(term) || email.includes(term) || group.includes(term);
+    }) : pendingFieldChanges;
+    return [...selected].sort((a, b) => {
+      const compare = Date.parse(a.createdAt) - Date.parse(b.createdAt);
+      return sortDir === "DESC" ? -compare : compare;
+    });
+  }, [pendingFieldChanges, searchQ, sortDir]);
+
   async function takeInCharge(row: AdminReviewCaseSummary) {
     if (!token || !canAssign || busyAssignFor) return;
     setBusyAssignFor(row.applicationId);
@@ -312,6 +399,26 @@ export function AdminQueuePage() {
       setToast({ message, type: "error" });
     } finally {
       setBusyAssignFor(null);
+    }
+  }
+
+  async function handleFcrAction(fcrId: string, action: "unlock" | "reject") {
+    if (!token || !canManageFcr || busyFcrFor) return;
+    setBusyFcrFor(fcrId);
+    try {
+      if (action === "unlock") {
+        await adminUnlockSection(fcrId, {}, token);
+        setToast({ message: "Sezione sbloccata per il fornitore.", type: "success" });
+      } else {
+        await adminRejectChangeRequest(fcrId, {}, token);
+        setToast({ message: "Richiesta modifica dati rifiutata.", type: "success" });
+      }
+      await loadPendingFieldChanges();
+    } catch (error) {
+      const message = error instanceof HttpError ? error.message : "Azione sulla richiesta modifica non riuscita.";
+      setToast({ message, type: "error" });
+    } finally {
+      setBusyFcrFor(null);
     }
   }
 
@@ -363,9 +470,22 @@ export function AdminQueuePage() {
               ["WAITING_SUPPLIER_RESPONSE", "Integrazione"],
               ["IN_PROGRESS", "In carico"],
               ["READY_FOR_DECISION", "Da decidere"],
+              ...(canManageFcr ? [["FIELD_CHANGE_REQUESTS", "Modifiche dati"] as const] : []),
               ["DECIDED", "Decise"],
             ] as const).map(([id, label]) => (
-              <button key={id} type="button" className={activeTab === id ? "is-active" : ""} onClick={() => setActiveTab(id)}>
+              <button
+                key={id}
+                type="button"
+                className={activeTab === id ? "is-active" : ""}
+                onClick={() => {
+                  setActiveTab(id);
+                  if (id === "FIELD_CHANGE_REQUESTS") {
+                    setSearchParams({ tab: "modifiche-dati" });
+                  } else if (searchParams.has("tab")) {
+                    setSearchParams({});
+                  }
+                }}
+              >
                 {label}
               </button>
             ))}
@@ -394,9 +514,70 @@ export function AdminQueuePage() {
       </div>
 
         <div className="panel">
-          {(loading || (activeTab === "DECIDED" && decidedLoading)) ? <p className="subtle admin-unified-table-empty">Caricamento...</p> : null}
-          {!loading && !decidedLoading && filteredRows.length === 0 ? <p className="subtle admin-unified-table-empty">Nessuna pratica per il filtro selezionato.</p> : null}
-          {!loading && !decidedLoading && filteredRows.length > 0 ? (
+          {activeTab === "FIELD_CHANGE_REQUESTS" ? (
+            <>
+              {fieldChangesLoading ? <p className="subtle admin-unified-table-empty">Caricamento...</p> : null}
+              {!fieldChangesLoading && filteredFieldChanges.length === 0 ? <p className="subtle admin-unified-table-empty">Nessuna richiesta modifica dati in attesa.</p> : null}
+              {!fieldChangesLoading && filteredFieldChanges.length > 0 ? (
+                <div className="admin-queue-table admin-unified-table admin-unified-table-clean admin-queue-table--revamp">
+                  <div className="admin-queue-row admin-queue-row-head admin-unified-table-row admin-unified-table-row-head">
+                    <span>Pratica</span>
+                    <span>Fornitore</span>
+                    <span>Albo</span>
+                    <span>Gruppo richiesto</span>
+                    <span>Richiesta il</span>
+                    <span>Messaggio</span>
+                    <span>Azioni</span>
+                  </div>
+                  {filteredFieldChanges.map((item) => {
+                    const code = item.protocolCode?.trim() || `APP-${item.applicationId.slice(0, 8).toUpperCase()}`;
+                    const busy = busyFcrFor === item.id;
+                    return (
+                      <div key={item.id} className="admin-queue-row admin-unified-table-row">
+                        <div className="queue-main-cell">
+                          <div className="queue-app-code" tabIndex={0} aria-label={`UUID: ${item.applicationId}`}>
+                            <strong>{code}</strong>
+                            <span className="queue-uuid-tooltip" role="tooltip">UUID: {item.applicationId}</span>
+                          </div>
+                          <span className="queue-assign-badge">In attesa sblocco</span>
+                        </div>
+                        <span className="queue-nominativo-cell">{item.supplierDisplayName || item.supplierEmail || "—"}</span>
+                        <span>{item.registryType === "ALBO_B" ? "Albo B" : item.registryType === "ALBO_A" ? "Albo A" : "—"}</span>
+                        <span className="queue-pill status">{fieldChangeGroupLabel(item.sectionKey)}</span>
+                        <span>{new Date(item.createdAt).toLocaleDateString("it-IT")}</span>
+                        <span className="subtle">{item.supplierMessage || "—"}</span>
+                        <div className="queue-actions" style={{ gap: 8 }}>
+                          <Link className="queue-manage-link" to={`/admin/candidature/${item.applicationId}/review`}>
+                            <span className="queue-manage-link-arrow" aria-hidden="true">&#8599;</span>
+                            <span className="queue-manage-link-label">Apri</span>
+                          </Link>
+                          <button
+                            type="button"
+                            className="queue-action-take queue-action-take-ghost"
+                            disabled={!canManageFcr || busy}
+                            onClick={() => void handleFcrAction(item.id, "unlock")}
+                          >
+                            {busy ? "..." : "Sblocca"}
+                          </button>
+                          <button
+                            type="button"
+                            className="queue-action-take queue-action-take-ghost"
+                            disabled={!canManageFcr || busy}
+                            onClick={() => void handleFcrAction(item.id, "reject")}
+                          >
+                            Rifiuta
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+          {activeTab !== "FIELD_CHANGE_REQUESTS" && (loading || (activeTab === "DECIDED" && decidedLoading)) ? <p className="subtle admin-unified-table-empty">Caricamento...</p> : null}
+          {activeTab !== "FIELD_CHANGE_REQUESTS" && !loading && !decidedLoading && filteredRows.length === 0 ? <p className="subtle admin-unified-table-empty">Nessuna pratica per il filtro selezionato.</p> : null}
+          {activeTab !== "FIELD_CHANGE_REQUESTS" && !loading && !decidedLoading && filteredRows.length > 0 ? (
             <div className={`admin-queue-table admin-unified-table admin-unified-table-clean admin-queue-table--revamp${activeTab === "DECIDED" ? " admin-queue-table--decided" : ""}`}>
               <div className="admin-queue-row admin-queue-row-head admin-unified-table-row admin-unified-table-row-head">
                 <span>Candidatura</span>
@@ -419,6 +600,9 @@ export function AdminQueuePage() {
                 const dueLabel = row.slaDueAt ? new Date(row.slaDueAt).toLocaleDateString("it-IT") : "n/d";
                 const isSupplierResponded = supplierResponded(row);
                 const examineLockedForUser = adminRole === "REVISORE" && row.assignedToUserId !== auth?.userId;
+                const isFieldChangeReview = row.reviewType === "FIELD_CHANGE";
+                const isDocumentRenewalReview = row.reviewType === "DOCUMENT_RENEWAL";
+                const canAssignRow = canAssign && !(isFieldChangeReview && adminRole === "REVISORE");
 
                 return (
                   <div key={row.id} className={`admin-queue-row admin-unified-table-row${recentlyAssigned === row.applicationId ? " queue-row-highlight" : ""}`}>
@@ -427,6 +611,12 @@ export function AdminQueuePage() {
                         <strong>{displayAppCode(row)}</strong>
                         <span className="queue-uuid-tooltip" role="tooltip">UUID: {row.applicationId}</span>
                       </div>
+                      {isFieldChangeReview && activeTab !== "DECIDED" && row.status !== "DECIDED" ? (
+                        <span className="queue-assign-badge">Modifica dati</span>
+                      ) : null}
+                      {isDocumentRenewalReview && activeTab !== "DECIDED" && row.status !== "DECIDED" ? (
+                        <span className="queue-assign-badge">Rinnovo documenti</span>
+                      ) : null}
                     </div>
                     <span className="queue-nominativo-cell">{row.applicantDisplayName ?? "—"}</span>
                     <span>{new Date(row.updatedAt).toLocaleDateString("it-IT")}</span>
@@ -437,6 +627,7 @@ export function AdminQueuePage() {
                       {activeTab === "DECIDED" ? decisionLabel(row.decision) : statusLabel(row.status)}
                       {activeTab !== "DECIDED" && row.status === "PENDING_ASSIGNMENT" ? <span className="queue-assign-badge">Da assegnare</span> : null}
                       {activeTab !== "DECIDED" && row.verifiedAt ? <span className="queue-verified-badge">Verificata</span> : null}
+                      {activeTab !== "DECIDED" && isDocumentRenewalReview ? <span className="queue-assign-badge">Rinnovo doc.</span> : null}
                     </span>
                     {activeTab !== "DECIDED" ? (
                       <span
@@ -473,8 +664,9 @@ export function AdminQueuePage() {
                         <button
                           type="button"
                           className="queue-action-take queue-action-take-ghost"
-                          disabled={!canAssign || busyAssignFor === row.applicationId}
+                          disabled={!canAssignRow || busyAssignFor === row.applicationId}
                           onClick={() => void takeInCharge(row)}
+                          title={!canAssignRow && isFieldChangeReview ? "Disponibile solo per Super Admin o Responsabile Albo" : undefined}
                         >
                           <Hand className="queue-action-take-icon" />
                           {busyAssignFor === row.applicationId ? "Presa in carico..." : "Prendi in carico"}

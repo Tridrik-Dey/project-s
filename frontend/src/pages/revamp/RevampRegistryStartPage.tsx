@@ -7,6 +7,12 @@ import type { AttachmentUploadResult } from "../../api/revampApplicationApi";
 import { API_BASE_URL, HttpError } from "../../api/http";
 import { clearRevampApplicationIdForRegistry, loadRevampApplicationIdForRegistry, saveRevampApplicationIdForRegistry } from "../../utils/revampApplicationSession";
 import { DIAL_CODE_OPTIONS } from "../../utils/dialCodes";
+import { loadRevampFcrEditSession } from "../../utils/revampFcrEditSession";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
+import { clearRevampIntegrationEditSession, integrationEditHasAnyCode, isRevampIntegrationEditFor } from "../../utils/revampIntegrationEditSession";
+import { completeRevampIntegrationEdit } from "../../utils/revampIntegrationCompletion";
+import { clearRevampDocumentRenewalEditSession, isRevampDocumentRenewalEditFor, requestRevampDocumentRenewalDrawerReopen } from "../../utils/revampDocumentRenewalEditSession";
 
 type RegistryType = "ALBO_A" | "ALBO_B";
 
@@ -356,6 +362,10 @@ export function RevampRegistryStartPage() {
   const { registryType: registryParam } = useParams();
   const registryType = useMemo(() => toRegistryType(registryParam), [registryParam]);
   const { auth } = useAuth();
+  const fcr = useFcrEditMode();
+  const integrationEdit = isRevampIntegrationEditFor(registryType === "ALBO_B" ? "ALBO_B" : "ALBO_A", 1);
+  const renewalEdit = isRevampDocumentRenewalEditFor(registryType === "ALBO_B" ? "ALBO_B" : "ALBO_A", 1);
+  const integrationIdentityOnly = integrationEditHasAnyCode(integrationEdit, ["ID_DOCUMENT"]) || Boolean(renewalEdit?.documentType === "ID_DOCUMENT");
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", birthDate: "", birthPlace: "",
@@ -377,6 +387,10 @@ export function RevampRegistryStartPage() {
   const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   async function getOrCreateApplicationId(type: RegistryType): Promise<string> {
+    const fcrSession = loadRevampFcrEditSession();
+    if (fcrSession) return fcrSession.applicationId;
+    if (integrationEdit) return integrationEdit.applicationId;
+    if (renewalEdit) return renewalEdit.applicationId;
     const existing = loadRevampApplicationIdForRegistry(type);
     if (existing) return existing;
     if (!auth?.token) throw new Error("Missing auth token");
@@ -464,7 +478,8 @@ export function RevampRegistryStartPage() {
     }
 
     const expectedType = registryType === "ALBO_A" ? "ALBO_A" : "ALBO_B";
-    const existingAppId = loadRevampApplicationIdForRegistry(expectedType);
+    const fcrSession = loadRevampFcrEditSession();
+    const existingAppId = fcrSession?.applicationId ?? renewalEdit?.applicationId ?? integrationEdit?.applicationId ?? loadRevampApplicationIdForRegistry(expectedType);
     if (existingAppId) {
       getRevampApplicationSections(existingAppId, auth.token).then(applyS1).catch(() => {});
       return;
@@ -531,7 +546,7 @@ export function RevampRegistryStartPage() {
 
   useEffect(() => {
     if (!profilePhotoAttachment || profilePhotoPreviewUrl || !auth?.token || !registryType || profilePhotoAttachment.mimeType === "application/pdf") return;
-    const appId = loadRevampApplicationIdForRegistry(registryType);
+    const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
     if (!appId) return;
     let cancelled = false;
     fetch(
@@ -627,6 +642,8 @@ export function RevampRegistryStartPage() {
     } else if (!isNotPastDate(form.idDocumentExpiry.trim())) {
       e.idDocumentExpiry = "La data di scadenza non può essere nel passato.";
     }
+
+    if (integrationIdentityOnly) return e;
 
     if (!form.firstName.trim())  e.firstName  = "Campo obbligatorio.";
     if (!form.lastName.trim())   e.lastName   = "Campo obbligatorio.";
@@ -725,6 +742,26 @@ export function RevampRegistryStartPage() {
     }
   }
 
+  async function saveSectionProgrammatic() {
+    if (!auth?.token) throw new Error("Sessione scaduta. Effettua nuovamente il login.");
+    const appId = await getOrCreateApplicationId(isA ? "ALBO_A" : "ALBO_B");
+    await saveRevampApplicationSection(appId, "S1", JSON.stringify({
+      firstName: form.firstName, lastName: form.lastName,
+      birthDate: form.birthDate, birthPlace: form.birthPlace,
+      taxCode: form.taxCode, vatNumber: form.vatNumber,
+      taxRegime: form.taxRegime, taxRegimeOther: form.taxRegimeOther, email: form.email,
+      phone: composePhoneValue(form.phoneCode, form.phone), country: form.country, address: form.address, addressLine: form.address,
+      city: form.city, postalCode: form.postalCode,
+      province: form.province, linkedin: form.linkedin,
+      secondaryPhone: composePhoneValue(form.phoneSecondaryCode, form.phoneSecondary),
+      secondaryEmail: form.emailSecondary,
+      pec: form.pec,
+      website: form.website,
+      ...(profilePhotoAttachment ? { profilePhotoAttachment } : {}),
+      ...(form.idDocumentExpiry ? { idDocumentExpiry: displayToIso(form.idDocumentExpiry) } : {}),
+    }), true, auth.token);
+  }
+
   async function handleNext(ev: FormEvent) {
     ev.preventDefault();
     setSaveError(null);
@@ -750,18 +787,32 @@ export function RevampRegistryStartPage() {
     if (auth?.token) {
       try {
         const appId = await getOrCreateApplicationId(isA ? "ALBO_A" : "ALBO_B");
-        const identityField = isA ? "taxCode" : "vatNumber";
-        const identityValue = isA ? form.taxCode : form.vatNumber;
-        const availability = await checkRevampIdentityAvailability(appId, identityField, identityValue, auth.token);
-        if (!availability.available) {
-          const message = isA
-            ? "Codice fiscale gia presente. Inserisci un valore diverso."
-            : "Partita IVA gia presente. Inserisci un valore diverso.";
-          setDuplicateErrors(prev => ({ ...prev, [identityField]: message }));
-          setErrors(prev => ({ ...prev, [identityField]: message }));
-          return;
+        if (!integrationIdentityOnly) {
+          const identityField = isA ? "taxCode" : "vatNumber";
+          const identityValue = isA ? form.taxCode : form.vatNumber;
+          const availability = await checkRevampIdentityAvailability(appId, identityField, identityValue, auth.token);
+          if (!availability.available) {
+            const message = isA
+              ? "Codice fiscale gia presente. Inserisci un valore diverso."
+              : "Partita IVA gia presente. Inserisci un valore diverso.";
+            setDuplicateErrors(prev => ({ ...prev, [identityField]: message }));
+            setErrors(prev => ({ ...prev, [identityField]: message }));
+            return;
+          }
         }
         await saveRevampApplicationSection(appId, "S1", sessionStorage.getItem("revamp_s1") ?? "{}", true, auth.token);
+        if (integrationEdit) {
+          await completeRevampIntegrationEdit(appId, auth.token, integrationEdit);
+          clearRevampIntegrationEditSession();
+          navigate(integrationEdit.returnPath);
+          return;
+        }
+        if (renewalEdit) {
+          requestRevampDocumentRenewalDrawerReopen(appId, renewalEdit.batchId);
+          clearRevampDocumentRenewalEditSession();
+          navigate(renewalEdit.returnPath);
+          return;
+        }
       } catch (error) {
         if (error instanceof HttpError && error.message.startsWith("validation.duplicate.")) {
           const field = isA ? "taxCode" : "vatNumber";
@@ -811,7 +862,11 @@ export function RevampRegistryStartPage() {
       </div>
 
       {/* ── Step bar ── */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "16px 40px" }}>
+      {fcr.active || integrationEdit || renewalEdit ? (
+        <div style={{ background: "#eff6ff", borderBottom: "1px solid #bfdbfe", padding: "12px 40px", color: "#174f82", fontSize: "0.86rem", fontWeight: 700 }}>
+          {renewalEdit ? "Rinnovo documento - Aggiorna solo il documento richiesto, poi salva." : fcr.active ? "Richiesta di modifica - Aggiorna solo il gruppo sbloccato, poi salva e invia." : "Richiesta integrazione - Aggiorna solo il documento richiesto, poi salva."}
+        </div>
+      ) : <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "16px 40px" }}>
         <div style={{ maxWidth: 820, margin: "0 auto", display: "flex", alignItems: "flex-start", justifyContent: "space-between", position: "relative" }}>
           <div style={{ position: "absolute", top: 18, left: "10%", right: "10%", height: 2, background: "#e5e7eb", zIndex: 0 }} />
           {STEPS.map((step, i) => {
@@ -828,7 +883,7 @@ export function RevampRegistryStartPage() {
             );
           })}
         </div>
-      </div>
+      </div>}
 
       {/* ── Form ── */}
       <form onSubmit={handleNext} noValidate>
@@ -849,6 +904,7 @@ export function RevampRegistryStartPage() {
             <div style={{ height: 1, background: "#f3f4f6", margin: "16px 0 4px" }} />
 
             {/* ── Documento ── */}
+            <div className={fcr.active ? (fcr.isLocked("foto_profilo") ? "fcr-locked" : "fcr-active-group") : integrationIdentityOnly ? "fcr-active-group" : undefined}>
             <SectionLabel label="Documento" accent={accent} required />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16, alignItems: "start" }}>
               {/* Col 1 — upload */}
@@ -916,8 +972,10 @@ export function RevampRegistryStartPage() {
                 }}
               />
             </div>
+            </div>
 
             {/* ── Dati personali ── */}
+            <fieldset disabled={integrationIdentityOnly} className={fcr.active ? (fcr.isLocked("dati_personali") ? "fcr-locked" : "fcr-active-group") : integrationIdentityOnly ? "fcr-locked" : undefined}>
             <SectionLabel label="Dati personali" accent={accent} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16, marginBottom: 16 }}>
               <Field label="Nome" required value={form.firstName} onChange={set("firstName")} error={errors.firstName} placeholder="Mario" />
@@ -937,8 +995,10 @@ export function RevampRegistryStartPage() {
               />
               <Field label="Luogo di nascita" required value={form.birthPlace} onChange={set("birthPlace")} error={errors.birthPlace} placeholder="Milano (MI)" tooltip="Comune e Paese se estero" />
             </div>
+            </fieldset>
 
             {/* ── Dati fiscali ── */}
+            <fieldset disabled={integrationIdentityOnly} className={fcr.active ? (fcr.isLocked("dati_fiscali") ? "fcr-locked" : "fcr-active-group") : integrationIdentityOnly ? "fcr-locked" : undefined}>
             <SectionLabel label="Dati fiscali" accent={accent} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: showOtherRegime ? 12 : 16 }}>
               <Field
@@ -969,8 +1029,10 @@ export function RevampRegistryStartPage() {
                 />
               </div>
             ) : null}
+            </fieldset>
 
             {/* ── Indirizzo ── */}
+            <fieldset disabled={integrationIdentityOnly} className={fcr.active ? (fcr.isLocked("indirizzo") ? "fcr-locked" : "fcr-active-group") : integrationIdentityOnly ? "fcr-locked" : undefined}>
             <SectionLabel label="Indirizzo professionale / di residenza" accent={accent} />
             <div style={{ display: "grid", gridTemplateColumns: "0.9fr 2fr", gap: 16, marginBottom: 12 }}>
               <Field label="Paese" required value={form.country} onChange={set("country")} error={errors.country} placeholder="Italia" />
@@ -981,8 +1043,10 @@ export function RevampRegistryStartPage() {
               <Field label="Codice postale" required value={form.postalCode} onChange={set("postalCode")} error={errors.postalCode} placeholder="20121" />
               <Field label="Provincia / Stato / Regione" required value={form.province} onChange={set("province")} error={errors.province} placeholder="MI, Lombardia, NY..." />
             </div>
+            </fieldset>
 
             {/* ── Contatti ── */}
+            <fieldset disabled={integrationIdentityOnly} className={fcr.active ? (fcr.isLocked("contatti") ? "fcr-locked" : "fcr-active-group") : integrationIdentityOnly ? "fcr-locked" : undefined}>
             <SectionLabel label="Contatti telefonici" accent={accent} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
               <PhoneField label="Telefono principale" required code={form.phoneCode} onCodeChange={(value) => setForm((prev) => ({ ...prev, phoneCode: value }))} value={form.phone} onChange={set("phone")} error={errors.phone} />
@@ -1022,6 +1086,7 @@ export function RevampRegistryStartPage() {
                 placeholder="linkedin.com/in/mario-rossi"
               />
             </div>
+            </fieldset>
 
             {/* ── Error summary ── */}
             {errorCount > 0 ? (
@@ -1042,7 +1107,7 @@ export function RevampRegistryStartPage() {
         </div>
 
         {/* ── Bottom navigation ── */}
-        <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 40px", position: "sticky", bottom: 0 }}>
+        {!fcr.active && <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 40px", position: "sticky", bottom: 0 }}>
           <Link className="wizard-nav-button wizard-nav-button-prev"
             to="/apply"
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: "#fff", border: `1.5px solid ${accent}`, borderRadius: 6, fontWeight: 600, fontSize: "0.85rem", color: accent, textDecoration: "none" }}
@@ -1061,10 +1126,11 @@ export function RevampRegistryStartPage() {
             type="submit"
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: accent, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, fontSize: "0.85rem", cursor: "pointer" }}
           >
-            Sezione successiva <ArrowRight size={15} />
+            {integrationEdit || renewalEdit ? "Salva documento" : "Sezione successiva"} <ArrowRight size={15} />
           </button>
-        </div>
+        </div>}
       </form>
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
     </div>
   );
 }

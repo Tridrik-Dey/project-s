@@ -12,6 +12,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -25,23 +26,23 @@ import java.util.UUID;
 @Slf4j
 public class RevampAlboBCertExpiryReminderService {
 
-    private static final String EVENT_KEY   = "revamp.albo-b.cert-expiry-reminder.sent";
+    private static final String EVENT_KEY = "revamp.albo-b.cert-expiry-reminder.sent";
     private static final String ENTITY_TYPE = "REVAMP_APPLICATION";
 
-    /** Human-readable labels keyed by the certificazioni JSON key. */
     private static final Map<String, String> CERT_LABELS = new LinkedHashMap<>();
     static {
-        CERT_LABELS.put("iso9001",  "ISO 9001 — Qualità");
-        CERT_LABELS.put("iso14001", "ISO 14001 — Ambiente");
-        CERT_LABELS.put("iso45001", "ISO 45001 / OHSAS 18001 — Salute e Sicurezza");
-        CERT_LABELS.put("sa8000",   "SA8000 — Responsabilità Sociale");
-        CERT_LABELS.put("iso27001", "ISO 27001 — Sicurezza delle informazioni");
+        CERT_LABELS.put("iso9001", "ISO 9001 - Qualita");
+        CERT_LABELS.put("iso14001", "ISO 14001 - Ambiente");
+        CERT_LABELS.put("iso45001", "ISO 45001 / OHSAS 18001 - Salute e Sicurezza");
+        CERT_LABELS.put("sa8000", "SA8000 - Responsabilita Sociale");
+        CERT_LABELS.put("iso27001", "ISO 27001 - Sicurezza delle informazioni");
     }
 
     private final RevampApplicationSectionRepository sectionRepository;
     private final RevampAuditEventRepository auditEventRepository;
     private final RevampAuditService auditService;
     private final RevampAlboBCertExpiryMailService mailService;
+    private final RevampDocumentRenewalRequestService documentRenewalRequestService;
 
     @Value("${app.reminders.albo-b-cert-expiry.enabled:true}")
     private boolean enabled;
@@ -55,11 +56,9 @@ public class RevampAlboBCertExpiryReminderService {
         }
 
         YearMonth nextMonth = YearMonth.now().plusMonths(1);
-        // Request ID includes the target month so dedup is per-application per expiry-month.
-        String requestId = "albo-b-cert-reminder-" + nextMonth;
+        String requestId = "albo-b-cert-reminder-" + LocalDate.now();
 
-        List<RevampApplicationSection> s4Sections =
-                sectionRepository.findApprovedAlboBCompletedS4Sections();
+        List<RevampApplicationSection> s4Sections = sectionRepository.findApprovedAlboBCompletedS4Sections();
 
         int scanned = s4Sections.size();
         int sent = 0;
@@ -70,20 +69,28 @@ public class RevampAlboBCertExpiryReminderService {
         for (RevampApplicationSection s4 : s4Sections) {
             UUID applicationId = s4.getApplication().getId();
 
-            if (auditEventRepository.existsByEventKeyAndEntityTypeAndEntityIdAndRequestId(
-                    EVENT_KEY, ENTITY_TYPE, applicationId, requestId)) {
-                duplicate++;
-                continue;
-            }
-
-            // Collect certifications expiring next month
-            List<String> expiringLabels = collectExpiringCerts(s4.getPayloadJson(), nextMonth);
+            List<ExpiringDocument> expiringDocuments = collectExpiringDocuments(s4.getPayloadJson(), nextMonth);
+            String batchId = requestId + "-" + applicationId;
+            List<ExpiringDocument> createdDocuments = expiringDocuments.stream()
+                    .filter(document -> documentRenewalRequestService.createReminderIfAbsent(
+                            applicationId,
+                            batchId,
+                            "S4",
+                            document.documentType(),
+                            document.label(),
+                            document.integrationItemCode(),
+                            document.certificationKey(),
+                            document.oldAttachmentJson(),
+                            RevampDocumentRenewalRequestService.expiryDateFromYearMonth(nextMonth)
+                    ))
+                    .toList();
+            List<String> expiringLabels = createdDocuments.stream().map(ExpiringDocument::label).toList();
             if (expiringLabels.isEmpty()) {
+                if (!expiringDocuments.isEmpty()) duplicate++;
                 skipped++;
                 continue;
             }
 
-            // Fetch S1 for company email and name
             Optional<RevampApplicationSection> s1Opt =
                     sectionRepository.findByApplicationIdAndSectionKeyAndIsLatestTrue(applicationId, "S1");
             if (s1Opt.isEmpty()) {
@@ -120,9 +127,10 @@ public class RevampAlboBCertExpiryReminderService {
                         "albo-b cert expiry reminder",
                         null,
                         null,
-                        "{\"expiryMonth\":\"" + nextMonth + "\"" +
-                        ",\"recipientEmail\":\"" + esc(recipientEmail) + "\"" +
-                        ",\"certs\":" + toJsonArray(expiringLabels) + "}"
+                        "{\"expiryMonth\":\"" + nextMonth + "\""
+                                + ",\"recipientEmail\":\"" + esc(recipientEmail) + "\""
+                                + ",\"batchId\":\"" + esc(batchId) + "\""
+                                + ",\"certs\":" + toJsonArray(expiringLabels) + "}"
                 ));
             } else {
                 failed++;
@@ -135,10 +143,9 @@ public class RevampAlboBCertExpiryReminderService {
                 scanned, sent, duplicate, skipped, failed);
     }
 
-    private List<String> collectExpiringCerts(JsonNode s4Payload, YearMonth target) {
-        List<String> labels = new ArrayList<>();
+    private List<ExpiringDocument> collectExpiringDocuments(JsonNode s4Payload, YearMonth target) {
+        List<ExpiringDocument> documents = new ArrayList<>();
 
-        // ISO certifications
         JsonNode certsNode = s4Payload.path("certificazioni");
         if (certsNode.isObject()) {
             for (Map.Entry<String, String> entry : CERT_LABELS.entrySet()) {
@@ -146,38 +153,68 @@ public class RevampAlboBCertExpiryReminderService {
                 if (!"si".equals(cert.path("presente").asText(""))) continue;
                 String scadenza = cert.path("scadenza").asText(null);
                 if (parseYearMonth(scadenza).filter(target::equals).isPresent()) {
-                    labels.add(entry.getValue());
+                    documents.add(new ExpiringDocument(
+                            "CERTIFICATION",
+                            entry.getValue(),
+                            integrationCodeForCert(entry.getKey()),
+                            entry.getKey(),
+                            findAttachment(s4Payload, "CERTIFICATION", entry.getKey())
+                    ));
                 }
             }
         }
 
-        // Visura camerale and DURC expiry (stored in attachments array)
         JsonNode attachments = s4Payload.path("attachments");
         if (attachments.isArray()) {
             for (JsonNode att : attachments) {
-                String docType  = att.path("documentType").asText("");
+                String docType = att.path("documentType").asText("");
                 String scadenza = att.path("scadenza").asText(null);
                 if (scadenza == null) continue;
                 if (!parseYearMonth(scadenza).filter(target::equals).isPresent()) continue;
                 if ("VISURA_CAMERALE".equals(docType)) {
-                    labels.add("Visura camerale ordinaria");
+                    documents.add(new ExpiringDocument("VISURA_CAMERALE", "Visura camerale ordinaria", "VISURA_CAMERALE", null, att.deepCopy()));
                 } else if ("DURC".equals(docType)) {
-                    labels.add("DURC — Documento Unico di Regolarità Contributiva");
+                    documents.add(new ExpiringDocument("DURC", "DURC - Documento Unico di Regolarita Contributiva", "DURC", null, att.deepCopy()));
                 }
             }
         }
 
-        return labels;
+        return documents;
     }
 
-    /** Parses MM/AAAA (e.g. "06/2025") into a YearMonth. */
+    private JsonNode findAttachment(JsonNode s4Payload, String documentType, String certificationKey) {
+        JsonNode attachments = s4Payload.path("attachments");
+        if (!attachments.isArray()) return null;
+        for (JsonNode att : attachments) {
+            if (!documentType.equals(att.path("documentType").asText(""))) continue;
+            if (certificationKey == null || certificationKey.isBlank()) {
+                if (!att.hasNonNull("certificationKey") || att.path("certificationKey").asText("").isBlank()) {
+                    return att.deepCopy();
+                }
+            } else if (certificationKey.equals(att.path("certificationKey").asText(""))) {
+                return att.deepCopy();
+            }
+        }
+        return null;
+    }
+
+    private String integrationCodeForCert(String certKey) {
+        return switch (certKey) {
+            case "iso9001" -> "CERT_ISO_9001";
+            case "iso14001" -> "CERT_ISO_14001";
+            case "iso45001" -> "CERT_ISO_45001";
+            case "sa8000" -> "CERT_SA8000";
+            default -> "CERTIFICATIONS_ACCREDITATIONS";
+        };
+    }
+
     private Optional<YearMonth> parseYearMonth(String mmAaaa) {
         if (mmAaaa == null) return Optional.empty();
         String[] parts = mmAaaa.split("/");
         if (parts.length != 2) return Optional.empty();
         try {
             int month = Integer.parseInt(parts[0].trim());
-            int year  = Integer.parseInt(parts[1].trim());
+            int year = Integer.parseInt(parts[1].trim());
             if (month < 1 || month > 12 || year < 2000) return Optional.empty();
             return Optional.of(YearMonth.of(year, month));
         } catch (NumberFormatException e) {
@@ -198,5 +235,14 @@ public class RevampAlboBCertExpiryReminderService {
     private static String esc(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private record ExpiringDocument(
+            String documentType,
+            String label,
+            String integrationItemCode,
+            String certificationKey,
+            JsonNode oldAttachmentJson
+    ) {
     }
 }

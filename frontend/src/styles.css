@@ -1994,8 +1994,8 @@
 
 .admin-queue-kpis {
   display: grid;
-  gap: 0.7rem;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.52rem;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .admin-queue-kpis .superadmin-kpi-card,
@@ -2006,9 +2006,9 @@
   border-style: solid;
   border-width: 1px;
   border-left-width: 3px;
-  min-height: 92px !important;
-  padding: 0.58rem 0.62rem !important;
-  gap: 0.16rem !important;
+  min-height: 86px !important;
+  padding: 0.5rem 0.52rem !important;
+  gap: 0.12rem !important;
 }
 
 .admin-queue-kpis .superadmin-kpi-card h4,
@@ -2017,7 +2017,7 @@
 .admin-evaluations-kpis .superadmin-kpi-card h4,
 .admin-reports-kpis .superadmin-kpi-card h4 {
   font-size: 0.8rem;
-  line-height: 1.15;
+  line-height: 1.12;
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -2027,8 +2027,8 @@
 .admin-kpi-grid .superadmin-kpi-head {
   align-items: flex-start;
   display: grid;
-  gap: 0.24rem;
-  grid-template-columns: minmax(0, 1fr) 22px;
+  gap: 0.18rem;
+  grid-template-columns: minmax(0, 1fr) 20px;
 }
 
 .admin-invites-kpis .superadmin-kpi-head,
@@ -2043,10 +2043,10 @@
 .admin-queue-kpis .superadmin-kpi-icon,
 .admin-kpi-grid .superadmin-kpi-icon {
   border-radius: 7px;
-  height: 22px;
+  height: 20px;
   justify-self: end;
-  min-width: 22px;
-  width: 22px;
+  min-width: 20px;
+  width: 20px;
 }
 
 .admin-invites-kpis .superadmin-kpi-icon,
@@ -2061,8 +2061,8 @@
 
 .admin-queue-kpis .superadmin-kpi-icon svg,
 .admin-kpi-grid .superadmin-kpi-icon svg {
-  height: 15px;
-  width: 15px;
+  height: 14px;
+  width: 14px;
 }
 
 .admin-invites-kpis .superadmin-kpi-icon svg,
@@ -2080,6 +2080,10 @@
   font-size: 1.62rem !important;
 }
 
+.admin-queue-kpis .superadmin-kpi-card strong {
+  font-size: 1.5rem !important;
+}
+
 .admin-queue-kpis .superadmin-kpi-card .superadmin-kpi-trend,
 .admin-kpi-grid .superadmin-kpi-card .superadmin-kpi-trend,
 .admin-invites-kpis .superadmin-kpi-card .superadmin-kpi-trend,
@@ -2091,12 +2095,21 @@
   white-space: nowrap;
 }
 
+.admin-queue-kpis .superadmin-kpi-card .superadmin-kpi-trend {
+  font-size: 0.67rem;
+}
+
 .admin-queue-kpis .superadmin-kpi-card .superadmin-kpi-level,
 .admin-kpi-grid .superadmin-kpi-card .superadmin-kpi-level,
 .admin-invites-kpis .superadmin-kpi-card .superadmin-kpi-level,
 .admin-evaluations-kpis .superadmin-kpi-card .superadmin-kpi-level,
 .admin-reports-kpis .superadmin-kpi-card .superadmin-kpi-level {
   font-size: 0.64rem;
+}
+
+.admin-queue-kpis .superadmin-kpi-card .superadmin-kpi-level {
+  font-size: 0.6rem;
+  padding: 0.1rem 0.34rem;
 }
 
 .admin-kpi-grid .superadmin-kpi-card h4 {
@@ -10319,6 +10332,30 @@ body {
   background: #f2f8ff;
   border-color: #d0e4f8;
   box-shadow: 0 12px 20px -20px rgba(11, 48, 81, 0.75);
+}
+
+.home-btn-primary:disabled,
+.home-btn-primary[aria-disabled="true"],
+.home-btn.admin-action-btn:disabled,
+.home-btn.admin-action-btn[aria-disabled="true"] {
+  background: #eef3f8;
+  border-color: #cfdbe8;
+  box-shadow: none;
+  color: #7f91a5;
+  cursor: not-allowed;
+  opacity: 0.72;
+  transform: none;
+}
+
+.home-btn-primary:disabled:hover,
+.home-btn-primary[aria-disabled="true"]:hover,
+.home-btn.admin-action-btn:disabled:hover,
+.home-btn.admin-action-btn[aria-disabled="true"]:hover {
+  background: #eef3f8;
+  border-color: #cfdbe8;
+  box-shadow: none;
+  color: #7f91a5;
+  transform: none;
 }
 
 .home-btn-secondary {
@@ -22270,6 +22307,28 @@ body {
   transform: translateY(-1px);
 }
 
+.supplier-identity-action:disabled {
+  background: #f4f7fb;
+  border-color: #d8e1ec;
+  color: #8a9aad;
+  cursor: not-allowed;
+  opacity: 0.72;
+  box-shadow: none;
+  transform: none;
+}
+
+.supplier-identity-action:disabled:hover {
+  background: #f4f7fb;
+  border-color: #d8e1ec;
+  box-shadow: none;
+  transform: none;
+}
+
+.supplier-identity-action:disabled svg {
+  transform: none;
+  opacity: 0.7;
+}
+
 .supplier-identity-action.is-primary:hover svg {
   transform: translateX(2px);
 }
@@ -22798,6 +22857,16 @@ body {
 
 .supplier-integration-drawer-edit:hover {
   background: #173c70;
+}
+
+.supplier-integration-drawer-edit.is-disabled,
+.supplier-integration-edit.is-disabled,
+.supplier-integration-drawer-edit:disabled {
+  background: #e5e7eb;
+  border-color: #cbd5e1;
+  color: #64748b;
+  cursor: default;
+  pointer-events: none;
 }
 
 .supplier-integration-drawer-foot {
@@ -26442,4 +26511,143 @@ body {
   font-size: 0.74rem;
   font-weight: 750;
   padding: 0.2rem 0.62rem;
+}
+
+/* ── FCR edit mode ──────────────────────────────────────────────────────── */
+
+.fcr-locked {
+  opacity: 1;
+  pointer-events: none;
+  user-select: text;
+}
+
+fieldset.fcr-locked,
+fieldset.fcr-active-group {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.fcr-locked .floating-input,
+.fcr-locked .floating-input:disabled,
+.fcr-locked .auth-input,
+.fcr-locked .auth-input:disabled,
+.fcr-locked input,
+.fcr-locked input:disabled,
+.fcr-locked textarea,
+.fcr-locked textarea:disabled,
+.fcr-locked select,
+.fcr-locked select:disabled {
+  background: #f3f7fb !important;
+  border-color: #cbd8e6 !important;
+  color: #475569 !important;
+  cursor: default !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #475569 !important;
+}
+
+.fcr-locked label,
+.fcr-locked span {
+  cursor: default !important;
+}
+
+.fcr-locked input::placeholder,
+.fcr-locked textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+.fcr-locked .revamp-choice-card,
+.fcr-locked .home-step-card {
+  opacity: 1;
+}
+
+.fcr-locked .revamp-choice-card {
+  cursor: default;
+}
+
+.fcr-locked .revamp-choice-card.selected {
+  border-color: #2f6da5;
+  background: #e8f3ff;
+  box-shadow: 0 0 0 2px rgba(47, 109, 165, 0.15) inset;
+}
+
+.fcr-locked button,
+.fcr-locked button:disabled {
+  cursor: default !important;
+  opacity: 1 !important;
+}
+
+.fcr-locked input[type="checkbox"],
+.fcr-locked input[type="radio"],
+.fcr-locked input[type="checkbox"]:disabled,
+.fcr-locked input[type="radio"]:disabled {
+  opacity: 1 !important;
+  cursor: default !important;
+}
+
+.fcr-active-group {
+  opacity: 1;
+}
+
+/* Sticky submit bar */
+.fcr-submit-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 300;
+  background: #1e3a5f;
+  border-top: 2px solid #2563eb;
+  padding: 0.75rem 1.5rem;
+}
+
+.fcr-submit-bar-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.fcr-submit-bar-label {
+  flex: 1;
+  color: #c8dcf0;
+  font-size: 0.84rem;
+}
+
+.fcr-submit-bar-error {
+  color: #fca5a5;
+  font-size: 0.82rem;
+}
+
+.fcr-submit-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1.2rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.fcr-submit-bar-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.fcr-submit-bar-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Extra bottom padding on the page when the FCR bar is visible */
+.fcr-mode-page-padding {
+  padding-bottom: 5rem;
 }

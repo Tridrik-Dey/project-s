@@ -6,6 +6,7 @@ import com.supplierplatform.revamp.enums.RegistryType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record RevampSupplierProfileDto(
@@ -24,6 +25,11 @@ public record RevampSupplierProfileDto(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         JsonNode publicCardView,
-        JsonNode adminCardView
+        JsonNode adminCardView,
+        boolean pendingFieldChange,
+        List<String> pendingFieldChangeSectionKeys,
+        boolean pendingDocumentRenewal,
+        List<String> pendingDocumentRenewalLabels,
+        List<String> expiredDocumentLabels
 ) {
 }

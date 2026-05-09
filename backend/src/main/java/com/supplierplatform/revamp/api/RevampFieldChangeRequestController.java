@@ -4,6 +4,7 @@ import com.supplierplatform.common.ApiResponse;
 import com.supplierplatform.config.RevampAccessGuard;
 import com.supplierplatform.revamp.api.dto.AdminFieldChangeActionDto;
 import com.supplierplatform.revamp.api.dto.CreateFieldChangeRequestDto;
+import com.supplierplatform.revamp.dto.AdminFieldChangeRequestRowDto;
 import com.supplierplatform.revamp.dto.FieldChangeRequestDto;
 import com.supplierplatform.revamp.enums.AdminRole;
 import com.supplierplatform.revamp.service.RevampFieldChangeRequestService;
@@ -48,6 +49,18 @@ public class RevampFieldChangeRequestController {
     }
 
     // ── Both: list all FCRs for an application ─────────────────────────────
+
+    @GetMapping("/admin/pending")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<List<AdminFieldChangeRequestRowDto>>> listPendingForAdmin() {
+        revampAccessGuard.requireReadEnabled();
+        governanceAuthorizationService.requireAnyRole(
+                getCurrentUserId(),
+                AdminRole.SUPER_ADMIN,
+                AdminRole.RESPONSABILE_ALBO
+        );
+        return ResponseEntity.ok(ApiResponse.ok(fcrService.listPendingForAdmin()));
+    }
 
     @GetMapping("/applications/{applicationId}")
     public ResponseEntity<ApiResponse<List<FieldChangeRequestDto>>> listForApplication(

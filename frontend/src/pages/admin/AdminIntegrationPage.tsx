@@ -331,7 +331,11 @@ export function AdminIntegrationPage() {
             </div>
 
             <div className="admin-integration-items">
-              {itemTemplates.map((item) => {
+              {itemTemplates.length === 0 ? (
+                <div className="admin-unified-table-empty">
+                  Nessun documento caricato disponibile per questa candidatura.
+                </div>
+              ) : itemTemplates.map((item) => {
                 const checked = selectedCodes.has(item.code);
                 return (
                   <article

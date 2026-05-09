@@ -113,7 +113,8 @@ public class RevampReviewController {
         governanceAuthorizationService.requireAnyRole(
                 getCurrentUserId(),
                 AdminRole.SUPER_ADMIN,
-                AdminRole.RESPONSABILE_ALBO
+                AdminRole.RESPONSABILE_ALBO,
+                AdminRole.REVISORE
         );
         User currentUser = getCurrentUser();
         RevampReviewCaseSummaryDto dto = reviewWorkflowService.requestIntegration(
@@ -184,5 +185,4 @@ public class RevampReviewController {
         return user != null ? user.getId() : null;
     }
 }
-
 

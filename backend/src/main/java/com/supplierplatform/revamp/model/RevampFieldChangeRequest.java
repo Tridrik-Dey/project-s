@@ -33,7 +33,7 @@ public class RevampFieldChangeRequest {
     private RevampApplication application;
 
     // Which section the supplier wants to change (e.g. "S1", "S2")
-    @Column(name = "section_key", nullable = false, length = 16)
+    @Column(name = "section_key", nullable = false, length = 32)
     private String sectionKey;
 
     @Column(name = "supplier_message", nullable = false, columnDefinition = "TEXT")

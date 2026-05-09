@@ -2,25 +2,20 @@ import { useState } from "react";
 import { FileEdit, Send, X } from "lucide-react";
 import { createFieldChangeRequest } from "../../api/fieldChangeRequestApi";
 import { HttpError } from "../../api/http";
-
-const SECTION_OPTIONS = [
-  { key: "S1", label: "S1 – Dati Anagrafici" },
-  { key: "S2", label: "S2 – Dati Aziendali" },
-  { key: "S3", label: "S3 – Capacità Tecnica" },
-  { key: "S4", label: "S4 – Referenze" },
-  { key: "S5", label: "S5 – Documenti" },
-];
+import { getFcrGroupsForRegistry, type FcrRegistryType } from "../../config/fcrFieldGroups";
 
 const MESSAGE_MAX = 2000;
 
 interface Props {
   applicationId: string;
+  registryType: FcrRegistryType;
   token: string;
   onClose: () => void;
   onSent: () => void;
 }
 
-export function FieldChangeRequestModal({ applicationId, token, onClose, onSent }: Props) {
+export function FieldChangeRequestModal({ applicationId, registryType, token, onClose, onSent }: Props) {
+  const groups = getFcrGroupsForRegistry(registryType);
   const [sectionKey, setSectionKey] = useState("");
   const [supplierMessage, setSupplierMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -46,6 +41,12 @@ export function FieldChangeRequestModal({ applicationId, token, onClose, onSent 
     }
   }
 
+  // Group options by step for the optgroup labels
+  const byStep = groups.reduce<Record<number, typeof groups>>((acc, g) => {
+    (acc[g.step] ??= []).push(g);
+    return acc;
+  }, {});
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel compose-email-modal" onClick={(e) => e.stopPropagation()}>
@@ -64,7 +65,7 @@ export function FieldChangeRequestModal({ applicationId, token, onClose, onSent 
 
           <div className="compose-field">
             <label className="compose-field-label" htmlFor="fcr-section">
-              Sezione da modificare <span className="compose-required">*</span>
+              Campo da modificare <span className="compose-required">*</span>
             </label>
             <select
               id="fcr-section"
@@ -73,9 +74,13 @@ export function FieldChangeRequestModal({ applicationId, token, onClose, onSent 
               onChange={(e) => setSectionKey(e.target.value)}
               disabled={sending}
             >
-              <option value="">Seleziona una sezione...</option>
-              {SECTION_OPTIONS.map((opt) => (
-                <option key={opt.key} value={opt.key}>{opt.label}</option>
+              <option value="">Seleziona il campo...</option>
+              {Object.entries(byStep).map(([step, stepGroups]) => (
+                <optgroup key={step} label={`Sezione ${step}`}>
+                  {stepGroups.map((g) => (
+                    <option key={g.key} value={g.key}>{g.label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>

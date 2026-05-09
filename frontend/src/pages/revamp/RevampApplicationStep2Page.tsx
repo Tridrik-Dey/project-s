@@ -14,6 +14,8 @@ import { useI18n } from "../../i18n/I18nContext";
 import { ATECO_FORMAT_ERROR, isValidAtecoCode, normalizeAtecoCode } from "../../utils/atecoValidation";
 import { saveRevampApplicationSession } from "../../utils/revampApplicationSession";
 import { resolveStepGuardRedirect } from "./revampFlow";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 type FieldErrors = Record<string, string>;
@@ -127,6 +129,7 @@ export function RevampApplicationStep2Page() {
   const { applicationId } = useParams();
   const { auth } = useAuth();
   const { t } = useI18n();
+  const fcr = useFcrEditMode();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [summary, setSummary] = useState<RevampApplicationSummary | null>(null);
@@ -145,6 +148,14 @@ export function RevampApplicationStep2Page() {
     if (saveState === "dirty") return t("revamp.step.common.saveState.dirty");
     return t("revamp.step.common.saveState.idle");
   }, [lastSavedAt, saveState, t]);
+
+  function locked(key: string) {
+    return fcr.active && fcr.isLocked(key) ? " fcr-locked" : "";
+  }
+
+  function readOnlyGroup(key: string) {
+    return fcr.active && fcr.isLocked(key);
+  }
 
   useEffect(() => {
     async function bootstrap() {
@@ -279,14 +290,8 @@ export function RevampApplicationStep2Page() {
     return next;
   }
 
-  async function onSave(event: FormEvent) {
-    event.preventDefault();
-    if (!applicationId || !auth?.token || !registryType) return;
-
-    const validationErrors = validate(registryType);
-    setErrors(validationErrors);
-    const completed = Object.keys(validationErrors).length === 0;
-    const payload = registryType === "ALBO_A"
+  function buildPayload(type: RevampRegistryType) {
+    return type === "ALBO_A"
       ? { ...alboA, atecoCode: normalizeAtecoCode(alboA.atecoCode) }
       : {
           ...alboB,
@@ -298,6 +303,33 @@ export function RevampApplicationStep2Page() {
           thirdSectorType: alboB.thirdSectorType.trim(),
           runtsNumber: alboB.runtsNumber.trim()
         };
+  }
+
+  async function saveSectionProgrammatic(): Promise<void> {
+    if (!applicationId || !auth?.token || !registryType) return;
+    const validationErrors = validate(registryType);
+    setErrors(validationErrors);
+    const completed = Object.keys(validationErrors).length === 0;
+    const payload = buildPayload(registryType);
+    setSaveState("saving");
+    try {
+      const saved = await saveRevampApplicationSection(applicationId, "S2", JSON.stringify(payload), completed, auth.token);
+      setLastSavedAt(new Date(saved.updatedAt).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }));
+      setSaveState("saved");
+    } catch (e) {
+      setSaveState("error");
+      throw e;
+    }
+  }
+
+  async function onSave(event: FormEvent) {
+    event.preventDefault();
+    if (!applicationId || !auth?.token || !registryType) return;
+
+    const validationErrors = validate(registryType);
+    setErrors(validationErrors);
+    const completed = Object.keys(validationErrors).length === 0;
+    const payload = buildPayload(registryType);
 
     setSaveState("saving");
     try {
@@ -351,7 +383,9 @@ export function RevampApplicationStep2Page() {
       <div className="panel revamp-step-header">
         <h2>{registryType === "ALBO_A" ? t("revamp.step2.title.alboA") : t("revamp.step2.title.alboB")}</h2>
         <p className="subtle">
-          {t("revamp.step.common.subtitle", { id: applicationId, state: saveLabel })}
+          {fcr.active
+            ? `Candidatura ${applicationId} - Richiesta di modifica: ${saveLabel}`
+            : t("revamp.step.common.subtitle", { id: applicationId, state: saveLabel })}
         </p>
       </div>
 
@@ -360,7 +394,7 @@ export function RevampApplicationStep2Page() {
           <>
             <h3 className="revamp-step-subtitle"><Layers3 className="h-4 w-4" /> {t("revamp.step2.alboA.sectionTitle")}</h3>
             <p className="subtle">Seleziona la tipologia professionale che rappresenta meglio la candidatura.</p>
-            <div className="revamp-choice-grid">
+            <div className={`revamp-choice-grid${locked("tipo_prof")}`}>
               {PROFESSIONAL_TYPE_OPTIONS.map((option) => {
                 const selected = alboA.professionalType === option.value;
                 const Icon = option.icon;
@@ -369,6 +403,7 @@ export function RevampApplicationStep2Page() {
                     key={option.value}
                     type="button"
                     className={`revamp-choice-card ${selected ? "selected" : ""}`}
+                    disabled={readOnlyGroup("tipo_prof")}
                     onClick={() => selectProfessionalType(option.value)}
                   >
                     <div className="revamp-choice-card-head">
@@ -380,11 +415,13 @@ export function RevampApplicationStep2Page() {
                 );
               })}
             </div>
-            <div className="grid-form">
+
+            <div className={`grid-form${locked("ateco")}`}>
               <label className={`floating-field ${alboA.atecoCode ? "has-value" : ""}`}>
                 <input
                   className="floating-input auth-input"
                   value={alboA.atecoCode}
+                  disabled={readOnlyGroup("ateco")}
                   onChange={(e) => {
                     const value = e.target.value;
                     setAlboA((prev) => ({ ...prev, atecoCode: value }));
@@ -402,7 +439,8 @@ export function RevampApplicationStep2Page() {
                 </span>
               </label>
             </div>
-            <div className="home-step-card">
+
+            <div className={`home-step-card${locked("comp_secondarie")}`}>
               <div className="home-step-head">
                 <span className="home-step-index">2</span>
                 <h4>{t("revamp.step2.field.secondaryProfessionalTypesOptional")}</h4>
@@ -416,6 +454,7 @@ export function RevampApplicationStep2Page() {
                       <input
                         type="checkbox"
                         checked={checked}
+                        disabled={readOnlyGroup("comp_secondarie")}
                         onChange={() => toggleSecondaryProfessionalType(option.value)}
                       />
                       <span>{t(option.labelKey)}</span>
@@ -424,6 +463,7 @@ export function RevampApplicationStep2Page() {
                 })}
               </div>
             </div>
+
             {errors.professionalType ? <p className="error">{errors.professionalType}</p> : null}
             {errors.atecoCode && errors.atecoCode !== ATECO_FORMAT_ERROR ? <p className="error">{errors.atecoCode}</p> : null}
           </>
@@ -431,7 +471,7 @@ export function RevampApplicationStep2Page() {
           <>
             <h3 className="revamp-step-subtitle"><Building2 className="h-4 w-4" /> {t("revamp.step2.alboB.sectionTitle")}</h3>
             <p className="subtle">Seleziona la fascia dimensionale dell'azienda.</p>
-            <div className="revamp-choice-grid revamp-choice-grid-compact">
+            <div className={`revamp-choice-grid revamp-choice-grid-compact${locked("dimensione")}`}>
               {EMPLOYEE_RANGE_OPTIONS.map((option) => {
                 const label = "labelKey" in option ? t(option.labelKey) : option.label;
                 const selected = alboB.employeeRange === option.value;
@@ -440,6 +480,7 @@ export function RevampApplicationStep2Page() {
                     key={option.value}
                     type="button"
                     className={`revamp-choice-card ${selected ? "selected" : ""}`}
+                    disabled={readOnlyGroup("dimensione")}
                     onClick={() => selectEmployeeRange(option.value)}
                   >
                     <div className="revamp-choice-card-head">
@@ -450,14 +491,13 @@ export function RevampApplicationStep2Page() {
                 );
               })}
             </div>
-            <div className="grid-form">
+            <div className={`grid-form${locked("dimensione")}`}>
               <label className="floating-field has-value">
                 <select
                   className="floating-input auth-input"
                   value={alboB.employeeRange}
-                  onChange={(e) => {
-                    selectEmployeeRange(e.target.value);
-                  }}
+                  disabled={readOnlyGroup("dimensione")}
+                  onChange={(e) => { selectEmployeeRange(e.target.value); }}
                 >
                   <option value="">{t("revamp.step2.option.selectEmployeeRange")}</option>
                   <option value="SOLO_TITOLARE">{t("revamp.step2.option.employeeRange.solo")}</option>
@@ -473,6 +513,7 @@ export function RevampApplicationStep2Page() {
                 <input
                   className="floating-input auth-input"
                   value={alboB.atecoPrimary}
+                  disabled={readOnlyGroup("dimensione")}
                   onChange={(e) => {
                     const value = e.target.value;
                     setAlboB((prev) => ({ ...prev, atecoPrimary: value }));
@@ -493,6 +534,7 @@ export function RevampApplicationStep2Page() {
                 <input
                   className="floating-input auth-input"
                   value={alboB.revenueBand}
+                  disabled={readOnlyGroup("dimensione")}
                   onChange={(e) => {
                     setAlboB((prev) => ({ ...prev, revenueBand: e.target.value }));
                     markDirty();
@@ -502,7 +544,11 @@ export function RevampApplicationStep2Page() {
                 <span className="floating-field-label">Fascia fatturato *</span>
               </label>
             </div>
-            <div className="home-step-card">
+            {errors.employeeRange ? <p className="error">{errors.employeeRange}</p> : null}
+            {errors.revenueBand ? <p className="error">{errors.revenueBand}</p> : null}
+            {errors.atecoPrimary && errors.atecoPrimary !== ATECO_FORMAT_ERROR ? <p className="error">{errors.atecoPrimary}</p> : null}
+
+            <div className={`home-step-card${locked("ateco_b")}`}>
               <div className="home-step-head">
                 <span className="home-step-index">A</span>
                 <h4>ATECO secondari (max 3)</h4>
@@ -514,6 +560,7 @@ export function RevampApplicationStep2Page() {
                       <input
                         className="floating-input auth-input"
                         value={value}
+                        disabled={readOnlyGroup("ateco_b")}
                         onChange={(e) => {
                           const value = e.target.value;
                           const next = [...alboB.atecoSecondary];
@@ -535,6 +582,7 @@ export function RevampApplicationStep2Page() {
                     <button
                       type="button"
                       className="home-btn home-btn-secondary"
+                      disabled={readOnlyGroup("ateco_b")}
                       onClick={() => {
                         if (alboB.atecoSecondary.length <= 1) return;
                         setAlboB((prev) => ({ ...prev, atecoSecondary: prev.atecoSecondary.filter((_, idx) => idx !== index) }));
@@ -548,7 +596,7 @@ export function RevampApplicationStep2Page() {
                 <button
                   type="button"
                   className="home-btn home-btn-secondary"
-                  disabled={alboB.atecoSecondary.length >= 3}
+                  disabled={readOnlyGroup("ateco_b") || alboB.atecoSecondary.length >= 3}
                   onClick={() => {
                     setAlboB((prev) => ({ ...prev, atecoSecondary: [...prev.atecoSecondary, ""] }));
                     markDirty();
@@ -558,7 +606,9 @@ export function RevampApplicationStep2Page() {
                 </button>
               </div>
             </div>
-            <div className="home-step-card">
+            {errors.atecoSecondary ? <p className="error">{errors.atecoSecondary}</p> : null}
+
+            <div className={`home-step-card${locked("regioni_op")}`}>
               <div className="home-step-head">
                 <span className="home-step-index">R</span>
                 <h4>Regioni operative *</h4>
@@ -570,6 +620,7 @@ export function RevampApplicationStep2Page() {
                       <input
                         className="floating-input auth-input"
                         value={item.region}
+                        disabled={readOnlyGroup("regioni_op")}
                         onChange={(e) => {
                           const next = [...alboB.operatingRegions];
                           next[index] = { ...next[index], region: e.target.value };
@@ -584,6 +635,7 @@ export function RevampApplicationStep2Page() {
                       <input
                         className="floating-input auth-input"
                         value={item.provincesCsv}
+                        disabled={readOnlyGroup("regioni_op")}
                         onChange={(e) => {
                           const next = [...alboB.operatingRegions];
                           next[index] = { ...next[index], provincesCsv: e.target.value };
@@ -597,6 +649,7 @@ export function RevampApplicationStep2Page() {
                     <button
                       type="button"
                       className="home-btn home-btn-secondary"
+                      disabled={readOnlyGroup("regioni_op")}
                       onClick={() => {
                         if (alboB.operatingRegions.length <= 1) return;
                         setAlboB((prev) => ({ ...prev, operatingRegions: prev.operatingRegions.filter((_, idx) => idx !== index) }));
@@ -610,6 +663,7 @@ export function RevampApplicationStep2Page() {
                 <button
                   type="button"
                   className="home-btn home-btn-secondary"
+                  disabled={readOnlyGroup("regioni_op")}
                   onClick={() => {
                     setAlboB((prev) => ({ ...prev, operatingRegions: [...prev.operatingRegions, { region: "", provincesCsv: "" }] }));
                     markDirty();
@@ -619,7 +673,9 @@ export function RevampApplicationStep2Page() {
                 </button>
               </div>
             </div>
-            <div className="home-step-card">
+            {errors.operatingRegions ? <p className="error">{errors.operatingRegions}</p> : null}
+
+            <div className={`home-step-card${locked("acc_formazione")}`}>
               <div className="home-step-head">
                 <span className="home-step-index">A</span>
                 <h4>Accreditamento formazione regionale</h4>
@@ -628,6 +684,7 @@ export function RevampApplicationStep2Page() {
                 <input
                   type="checkbox"
                   checked={alboB.regionalTrainingAccreditation.isAccredited}
+                  disabled={readOnlyGroup("acc_formazione")}
                   onChange={(e) => {
                     const checked = e.target.checked;
                     setAlboB((prev) => ({
@@ -644,6 +701,7 @@ export function RevampApplicationStep2Page() {
                   <input
                     className="floating-input auth-input"
                     value={alboB.regionalTrainingAccreditation.regionsCsv}
+                    disabled={readOnlyGroup("acc_formazione")}
                     onChange={(e) => {
                       const value = e.target.value;
                       setAlboB((prev) => ({
@@ -660,6 +718,7 @@ export function RevampApplicationStep2Page() {
                   <input
                     className="floating-input auth-input"
                     value={alboB.regionalTrainingAccreditation.accreditationNumber}
+                    disabled={readOnlyGroup("acc_formazione")}
                     onChange={(e) => {
                       const value = e.target.value;
                       setAlboB((prev) => ({
@@ -674,11 +733,13 @@ export function RevampApplicationStep2Page() {
                 </label>
               </div>
             </div>
-            <div className="grid-form">
+
+            <div className={`grid-form${locked("terzo_settore")}`}>
               <label className={`floating-field ${alboB.thirdSectorType ? "has-value" : ""}`}>
                 <input
                   className="floating-input auth-input"
                   value={alboB.thirdSectorType}
+                  disabled={readOnlyGroup("terzo_settore")}
                   onChange={(e) => {
                     setAlboB((prev) => ({ ...prev, thirdSectorType: e.target.value }));
                     markDirty();
@@ -691,6 +752,7 @@ export function RevampApplicationStep2Page() {
                 <input
                   className="floating-input auth-input"
                   value={alboB.runtsNumber}
+                  disabled={readOnlyGroup("terzo_settore")}
                   onChange={(e) => {
                     setAlboB((prev) => ({ ...prev, runtsNumber: e.target.value }));
                     markDirty();
@@ -700,28 +762,30 @@ export function RevampApplicationStep2Page() {
                 <span className="floating-field-label">Numero RUNTS</span>
               </label>
             </div>
-            {errors.employeeRange ? <p className="error">{errors.employeeRange}</p> : null}
-            {errors.revenueBand ? <p className="error">{errors.revenueBand}</p> : null}
-            {errors.atecoPrimary && errors.atecoPrimary !== ATECO_FORMAT_ERROR ? <p className="error">{errors.atecoPrimary}</p> : null}
-            {errors.atecoSecondary ? <p className="error">{errors.atecoSecondary}</p> : null}
-            {errors.operatingRegions ? <p className="error">{errors.operatingRegions}</p> : null}
             {errors.runtsNumber ? <p className="error">{errors.runtsNumber}</p> : null}
           </>
         )}
 
         <div className="revamp-step-actions">
-          <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/1`}>
-            {t("revamp.step2.backToStep1")}
-          </Link>
-          <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/3`}>
-            {t("revamp.step2.goToStep3")}
-          </Link>
-          <button type="submit" className="home-btn home-btn-primary" disabled={saveState === "saving"}>
-            <Save className="h-4 w-4" />
-            <span>{saveState === "saving" ? t("revamp.step.common.saving") : t("revamp.step.common.saveSection")}</span>
-          </button>
+          {!fcr.active && (
+            <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/1`}>
+              {t("revamp.step2.backToStep1")}
+            </Link>
+          )}
+          {!fcr.active && (
+            <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/3`}>
+              {t("revamp.step2.goToStep3")}
+            </Link>
+          )}
+          {!fcr.active && (
+            <button type="submit" className="home-btn home-btn-primary" disabled={saveState === "saving"}>
+              <Save className="h-4 w-4" />
+              <span>{saveState === "saving" ? t("revamp.step.common.saving") : t("revamp.step.common.saveSection")}</span>
+            </button>
+          )}
         </div>
       </form>
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
     </section>
   );
 }

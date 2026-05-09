@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, CheckSquare } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
-import { saveRevampApplicationSection } from "../../api/revampApplicationApi";
+import { getRevampApplicationSections, saveRevampApplicationSection } from "../../api/revampApplicationApi";
 import { loadRevampApplicationIdForRegistry } from "../../utils/revampApplicationSession";
+import { loadRevampFcrEditSession } from "../../utils/revampFcrEditSession";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
 
 const NAVY  = "#0f2a52";
 const GREEN = "#1a5c3a";
@@ -129,11 +132,38 @@ export function RevampStep5DichiarazioniPage() {
   const accent    = isA ? NAVY : GREEN;
   const title     = isA ? "Albo A — Professionisti" : "Albo B — Aziende";
   const registryType = isA ? "ALBO_A" : "ALBO_B";
+  const fcr = useFcrEditMode();
 
   const [checks,       setChecks]       = useState<Checks>(() =>
     Object.fromEntries(DECLARATIONS.map(d => [d.id, false]))
   );
   const [triedSubmit, setTriedSubmit] = useState(false);
+
+  useEffect(() => {
+    if (!auth?.token) return;
+    const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
+    if (!appId) return;
+    getRevampApplicationSections(appId, auth.token).then(sections => {
+      const latest = sections.filter(s => s.sectionKey === "S5").sort((a, b) => b.sectionVersion - a.sectionVersion)[0];
+      if (!latest) return;
+      const payload = JSON.parse(latest.payloadJson) as Record<string, unknown>;
+      const declarations = Array.isArray(payload.declarations) ? payload.declarations as string[] : [];
+      setChecks(prev => {
+        const next = { ...prev };
+        for (const id of declarations) next[id] = true;
+        if (typeof payload.noCriminalConvictions === "boolean") next.condannePenali = payload.noCriminalConvictions;
+        if (typeof payload.noConflictOfInterest === "boolean") next.conflittiInteresse = payload.noConflictOfInterest;
+        if (typeof payload.truthfulnessDeclaration === "boolean") next.veridicitaInfo = payload.truthfulnessDeclaration;
+        if (typeof payload.privacyAccepted === "boolean") next.privacyPolicy = payload.privacyAccepted;
+        if (typeof payload.alboDataProcessingConsent === "boolean") next.consensoAlbo = payload.alboDataProcessingConsent;
+        if (typeof payload.marketingConsent === "boolean") next.consensoMarketing = payload.marketingConsent;
+        if (typeof payload.ethicalCodeAccepted === "boolean") next.codiceEtico = payload.ethicalCodeAccepted;
+        if (typeof payload.qualityEnvSafetyAccepted === "boolean") next.standardQualita = payload.qualityEnvSafetyAccepted;
+        if (typeof payload.dlgs81ComplianceWhenInPresence === "boolean") next.dlgs81 = payload.dlgs81ComplianceWhenInPresence;
+        return next;
+      });
+    }).catch(() => {});
+  }, [auth?.token, registryType]);
 
   function toggle(id: string) {
     setChecks(prev => ({ ...prev, [id]: !prev[id] }));
@@ -154,7 +184,7 @@ export function RevampStep5DichiarazioniPage() {
     sessionStorage.setItem("revamp_s5_done", "true");
     if (auth?.token) {
       try {
-        const appId = loadRevampApplicationIdForRegistry(registryType);
+        const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
         if (appId) {
           const frontendPayload = { declarations: Object.entries(checks).filter(([, v]) => v).map(([k]) => k) };
           let apiPayload: Record<string, unknown> = { ...frontendPayload };
@@ -183,6 +213,25 @@ export function RevampStep5DichiarazioniPage() {
     navigate(`/apply/${registryParam}/recap`);
   }
 
+  async function saveSectionProgrammatic() {
+    if (!auth?.token) throw new Error("Sessione scaduta. Effettua nuovamente il login.");
+    const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
+    if (!appId) throw new Error("Candidatura non trovata.");
+    const frontendPayload = { declarations: Object.entries(checks).filter(([, v]) => v).map(([k]) => k) };
+    await saveRevampApplicationSection(appId, "S5", JSON.stringify({
+      ...frontendPayload,
+      noCriminalConvictions:         checks.condannePenali      ?? false,
+      noConflictOfInterest:          checks.conflittiInteresse  ?? false,
+      truthfulnessDeclaration:       checks.veridicitaInfo      ?? false,
+      privacyAccepted:               checks.privacyPolicy       ?? false,
+      alboDataProcessingConsent:     checks.consensoAlbo        ?? false,
+      marketingConsent:              checks.consensoMarketing    ?? false,
+      ethicalCodeAccepted:           checks.codiceEtico         ?? false,
+      qualityEnvSafetyAccepted:      checks.standardQualita     ?? false,
+      dlgs81ComplianceWhenInPresence: checks.dlgs81             ?? false,
+    }), true, auth.token);
+  }
+
   const checkedRequired = DECLARATIONS.filter(isRequired).filter(d => checks[d.id]).length;
   const totalRequired   = DECLARATIONS.filter(isRequired).length;
   const allDone         = checkedRequired === totalRequired;
@@ -207,7 +256,11 @@ export function RevampStep5DichiarazioniPage() {
         </span>
       </div>
 
-      <StepBar active={4} accent={accent} />
+      {fcr.active ? (
+        <div style={{ background: "#eff6ff", borderBottom: "1px solid #bfdbfe", padding: "12px 40px", color: "#174f82", fontSize: "0.86rem", fontWeight: 700 }}>
+          Richiesta di modifica - Aggiorna solo il gruppo sbloccato, poi salva e invia.
+        </div>
+      ) : <StepBar active={4} accent={accent} />}
 
       {/* ── Main content ── */}
       <div style={{ maxWidth: 900, margin: "24px auto", padding: "0 24px 110px" }}>
@@ -220,7 +273,7 @@ export function RevampStep5DichiarazioniPage() {
         </p>
 
         {/* Declarations */}
-        <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", overflow: "hidden" }}>
+        <div className={fcr.active ? (fcr.isLocked("dichiarazioni") ? "fcr-locked" : "fcr-active-group") : undefined} style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", overflow: "hidden" }}>
           {DECLARATIONS.map((decl, idx) => {
             const req          = isRequired(decl);
             const checked      = checks[decl.id];
@@ -294,7 +347,7 @@ export function RevampStep5DichiarazioniPage() {
       </div>
 
       {/* ── Bottom nav ── */}
-      <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 36px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
+      {!fcr.active && <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 36px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
         <Link className="wizard-nav-button wizard-nav-button-prev"
           to={`/apply/${registryParam}/step/4`}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: "#fff", border: `1.5px solid ${accent}`, borderRadius: 6, fontWeight: 600, fontSize: "0.84rem", color: accent, textDecoration: "none" }}
@@ -333,7 +386,8 @@ export function RevampStep5DichiarazioniPage() {
         >
           <CheckSquare size={16} /> Vai al riepilogo
         </button>
-      </div>
+      </div>}
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
     </div>
   );
 }

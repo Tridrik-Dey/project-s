@@ -7,6 +7,7 @@ import { useAdminGovernanceRole } from "../hooks/useAdminGovernanceRole";
 import type { AdminRole } from "../api/adminUsersRolesApi";
 import { isRevampEmailVerified } from "../utils/revampEmailVerification";
 import { getMyLatestRevampApplication, getRevampApplicationSummary, type RevampApplicationSummary } from "../api/revampApplicationApi";
+import { loadRevampFcrEditSession } from "../utils/revampFcrEditSession";
 
 const LoginPage = lazy(() => import("../pages/auth/LoginPage").then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import("../pages/auth/RegisterPage").then((m) => ({ default: m.RegisterPage })));
@@ -102,7 +103,10 @@ function RequireRevampDraftForWizard({ children, useRouteApplicationId = false }
           const canEditIntegrationApplication =
             summary?.status === "INTEGRATION_REQUIRED"
             && (useRouteApplicationId || location.pathname.startsWith("/apply/"));
-          setRedirectTo(summary && summary.status !== "DRAFT" && !canEditIntegrationApplication ? submittedDestination(summary) : null);
+          const canEditFcrSection =
+            (summary?.status === "APPROVED" || summary?.status === "FIELD_CHANGE_IN_PROGRESS")
+            && loadRevampFcrEditSession() !== null;
+          setRedirectTo(summary && summary.status !== "DRAFT" && !canEditIntegrationApplication && !canEditFcrSection ? submittedDestination(summary) : null);
         }
       } catch {
         if (!cancelled) setRedirectTo(null);

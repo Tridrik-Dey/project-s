@@ -136,6 +136,26 @@ function statusClass(s: RegistryProfileStatus): string {
   return "tone-neutral";
 }
 
+function fieldChangeGroupLabel(sectionKey: string | null | undefined): string {
+  const normalized = (sectionKey ?? "").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    ateco_b: "Codici ATECO",
+    ateco: "Codici ATECO",
+    dimensione: "Dimensione aziendale",
+    regioni_op: "Regioni operative",
+    acc_formazione: "Accreditamento formazione",
+    terzo_settore: "Terzo settore",
+    tipo_prof: "Tipologia professionale",
+    comp_secondarie: "Competenze secondarie",
+    dati_personali: "Dati personali",
+    dati_fiscali: "Dati fiscali",
+    indirizzo: "Indirizzo",
+    contatti: "Contatti",
+    foto_profilo: "Foto profilo"
+  };
+  return labels[normalized] ?? (sectionKey || "Modifica dati");
+}
+
 function timelineEventCopy(event: AdminProfileTimelineEvent): { title: string; detail: string; tone: "ok" | "warn" | "neutral" } {
   const key = event.eventKey.toLowerCase();
   const reason = event.reason?.trim();
@@ -507,7 +527,27 @@ export function AdminRegistryProfileDetailPage() {
     }),
     ...applicationAudit
       .map(applicationHistoryEvent)
-      .filter((item): item is HistoryRow => Boolean(item))
+      .filter((item): item is HistoryRow => Boolean(item)),
+    ...fieldChangeRequests.map((fcr): HistoryRow => {
+      const tone: HistoryRow["tone"] = fcr.status === "APPROVED"
+        ? "ok"
+        : fcr.status === "REJECTED" || fcr.status === "REJECTED_BY_ADMIN"
+          ? "warn"
+          : "neutral";
+      return {
+        id: `fcr-${fcr.id}`,
+        title: fcr.status === "APPROVED"
+          ? "Modifica dati approvata"
+          : fcr.status === "REJECTED"
+            ? "Modifica dati respinta"
+            : fcr.status === "SUBMITTED" || fcr.status === "UNDER_REVIEW"
+              ? "Modifica dati in revisione"
+              : "Richiesta modifica dati",
+        detail: `${fieldChangeGroupLabel(fcr.sectionKey)}${fcr.supplierMessage ? ` - ${fcr.supplierMessage}` : ""}`,
+        tone,
+        occurredAt: fcr.submittedAt ?? fcr.updatedAt ?? fcr.createdAt
+      };
+    })
   ].sort((a, b) => Date.parse(b.occurredAt ?? "") - Date.parse(a.occurredAt ?? ""));
   const communicationRows: CommunicationRow[] = [
     ...applicationAudit
@@ -598,6 +638,9 @@ export function AdminRegistryProfileDetailPage() {
                   <span className={`hero-registry-badge ${isAlboB ? "badge-albo-b" : "badge-albo-a"}`}>
                     {isAlboB ? "Albo B — Azienda" : "Albo A — Professionista"}
                   </span>
+                  {profile.pendingFieldChange ? (
+                    <span className="comm-status-badge badge-neutral">Modifica dati in revisione</span>
+                  ) : null}
                 </div>
                 {heroSubtitle ? <p className="hero-subtitle">{heroSubtitle}</p> : null}
                 {profile.publicSummary ? <p className="hero-summary">{profile.publicSummary}</p> : null}
@@ -797,7 +840,7 @@ export function AdminRegistryProfileDetailPage() {
                           <article key={fcr.id} className="admin-profile-history-item">
                             <div className="history-event-header">
                               <strong className="history-event-key">
-                                Sezione {fcr.sectionKey} — Richiesta modifica
+                                {fieldChangeGroupLabel(fcr.sectionKey)} — Richiesta modifica
                               </strong>
                               <span className={`comm-status-badge ${fcr.status === "APPROVED" ? "badge-ok" : fcr.status === "REJECTED" || fcr.status === "REJECTED_BY_ADMIN" ? "badge-warn" : "badge-neutral"}`}>
                                 {statusLabel[fcr.status] ?? fcr.status}

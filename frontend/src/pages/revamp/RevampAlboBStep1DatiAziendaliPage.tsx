@@ -6,6 +6,9 @@ import { HttpError } from "../../api/http";
 import { checkRevampIdentityAvailability, createRevampApplicationDraft, deleteRevampApplicationDraft, getMyLatestRevampApplication, getRevampApplicationSections, saveRevampApplicationSection, uploadRevampAttachment, type AttachmentUploadResult } from "../../api/revampApplicationApi";
 import { clearRevampApplicationIdForRegistry, loadRevampApplicationIdForRegistry, saveRevampApplicationIdForRegistry } from "../../utils/revampApplicationSession";
 import { DIAL_CODE_OPTIONS } from "../../utils/dialCodes";
+import { clearRevampIntegrationEditSession, integrationEditHasAnyCode, isRevampIntegrationEditFor } from "../../utils/revampIntegrationEditSession";
+import { completeRevampIntegrationEdit } from "../../utils/revampIntegrationCompletion";
+import { clearRevampDocumentRenewalEditSession, isRevampDocumentRenewalEditFor, requestRevampDocumentRenewalDrawerReopen } from "../../utils/revampDocumentRenewalEditSession";
 
 const GREEN = "#1a5c3a";
 const MUTED = "#6b7280";
@@ -346,6 +349,9 @@ function StepBar({ active }: { active: number }) {
 export function RevampAlboBStep1DatiAziendaliPage() {
   const navigate = useNavigate();
   const { auth } = useAuth();
+  const integrationEdit = isRevampIntegrationEditFor("ALBO_B", 1);
+  const renewalEdit = isRevampDocumentRenewalEditFor("ALBO_B", 1);
+  const integrationIdentityOnly = integrationEditHasAnyCode(integrationEdit, ["ID_DOCUMENT"]) || Boolean(renewalEdit?.documentType === "ID_DOCUMENT");
 
   const [form, setForm] = useState({
     ragioneSociale: "", formaGiuridica: "", piva: "", codiceFiscale: "",
@@ -365,6 +371,8 @@ export function RevampAlboBStep1DatiAziendaliPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   async function getOrCreateAlboBApplicationId(): Promise<string> {
+    if (integrationEdit) return integrationEdit.applicationId;
+    if (renewalEdit) return renewalEdit.applicationId;
     const existing = loadRevampApplicationIdForRegistry("ALBO_B");
     if (existing) return existing;
     if (!auth?.token) throw new Error("Missing auth token");
@@ -487,7 +495,7 @@ export function RevampAlboBStep1DatiAziendaliPage() {
       }
     }
 
-    const existingAppId = loadRevampApplicationIdForRegistry("ALBO_B");
+    const existingAppId = renewalEdit?.applicationId ?? integrationEdit?.applicationId ?? loadRevampApplicationIdForRegistry("ALBO_B");
     if (existingAppId) {
       getRevampApplicationSections(existingAppId, auth.token).then(applyS1).catch(() => {});
       return;
@@ -509,6 +517,13 @@ export function RevampAlboBStep1DatiAziendaliPage() {
 
   function validate(): Record<string, string> {
     const e: Record<string, string> = {};
+    if (integrationIdentityOnly) {
+      if (!form.lrIdDocumentExpiry.trim()) { e.lrIdDocumentExpiry = "Campo obbligatorio."; }
+      else if (!isValidDate(form.lrIdDocumentExpiry.trim())) { e.lrIdDocumentExpiry = "Data non valida. Usa il formato GG/MM/AAAA."; }
+      else if (!isNotPastDate(form.lrIdDocumentExpiry.trim())) { e.lrIdDocumentExpiry = "La data di scadenza non puÃ² essere nel passato."; }
+      if (!lrCartaIdentita) e.lrCartaIdentita = "Allega la carta d'identitÃ  del legale rappresentante.";
+      return e;
+    }
     if (!form.ragioneSociale.trim()) e.ragioneSociale = "Campo obbligatorio.";
     if (!form.formaGiuridica) e.formaGiuridica = "Campo obbligatorio.";
     if (!form.piva.trim()) { e.piva = "Campo obbligatorio."; }
@@ -655,12 +670,26 @@ export function RevampAlboBStep1DatiAziendaliPage() {
             province: form.provinciaLegale,
           },
         };
-        const availability = await checkRevampIdentityAvailability(appId, "vatNumber", form.piva, auth.token);
-        if (!availability.available) {
-          setErrors((prev) => ({ ...prev, piva: DUPLICATE_PIVA_ERROR }));
-          return;
+        if (!integrationIdentityOnly) {
+          const availability = await checkRevampIdentityAvailability(appId, "vatNumber", form.piva, auth.token);
+          if (!availability.available) {
+            setErrors((prev) => ({ ...prev, piva: DUPLICATE_PIVA_ERROR }));
+            return;
+          }
         }
         await saveRevampApplicationSection(appId, "S1", JSON.stringify(apiPayload), true, auth.token);
+        if (integrationEdit) {
+          await completeRevampIntegrationEdit(appId, auth.token, integrationEdit);
+          clearRevampIntegrationEditSession();
+          navigate(integrationEdit.returnPath);
+          return;
+        }
+        if (renewalEdit) {
+          requestRevampDocumentRenewalDrawerReopen(appId, renewalEdit.batchId);
+          clearRevampDocumentRenewalEditSession();
+          navigate(renewalEdit.returnPath);
+          return;
+        }
       } catch (error) {
         if (error instanceof HttpError && error.message === "validation.duplicate.vatNumber") {
           setErrors((prev) => ({ ...prev, piva: DUPLICATE_PIVA_ERROR }));
@@ -700,7 +729,11 @@ export function RevampAlboBStep1DatiAziendaliPage() {
         </div>
       </div>
 
-      <StepBar active={0} />
+      {integrationEdit || renewalEdit ? (
+        <div style={{ background: "#eff6ff", borderBottom: "1px solid #bfdbfe", padding: "12px 40px", color: "#174f82", fontSize: "0.86rem", fontWeight: 700 }}>
+          {renewalEdit ? "Rinnovo documento - Aggiorna solo il documento richiesto, poi salva." : "Richiesta integrazione - Aggiorna solo il documento richiesto, poi salva."}
+        </div>
+      ) : <StepBar active={0} />}
 
       <form onSubmit={handleNext} noValidate>
         <div style={{ maxWidth: 1040, margin: "28px auto", padding: "0 24px" }}>
@@ -714,6 +747,7 @@ export function RevampAlboBStep1DatiAziendaliPage() {
             </div>
             <div style={{ height: 1, background: "#f3f4f6", margin: "16px 0 4px" }} />
 
+            <fieldset disabled={integrationIdentityOnly} className={integrationIdentityOnly ? "fcr-locked" : undefined}>
             {/* Dati aziendali */}
             <SectionLabel label="Dati aziendali" />
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, marginBottom: 16 }}>
@@ -756,14 +790,18 @@ export function RevampAlboBStep1DatiAziendaliPage() {
               <Field label="Sito web aziendale" type="url" value={form.sitoWeb} onChange={set("sitoWeb")} error={errors.sitoWeb} placeholder="https://www.azienda.it" hintText="opzionale" />
               <Field label="LinkedIn aziendale" type="url" value={form.linkedin} onChange={set("linkedin")} error={errors.linkedin} placeholder="https://www.linkedin.com/company/azienda" hintText="opzionale" />
             </div>
+            </fieldset>
 
             {/* Legale rappresentante */}
             <SectionLabel label="Legale rappresentante" />
+            <fieldset disabled={integrationIdentityOnly} className={integrationIdentityOnly ? "fcr-locked" : undefined}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }}>
               <Field label="Nome e Cognome" required value={form.lrNomeCognome} onChange={set("lrNomeCognome")} error={errors.lrNomeCognome} placeholder="Mario Rossi" />
               <Field label="Codice Fiscale" required value={form.lrCodiceFiscale} onChange={set("lrCodiceFiscale")} error={errors.lrCodiceFiscale} placeholder="RSSMRA80C15F205X" />
               <Field label="Ruolo / Carica" required value={form.lrRuolo} onChange={set("lrRuolo")} error={errors.lrRuolo} placeholder="Es. Amministratore Unico, Presidente CdA" />
             </div>
+            </fieldset>
+            <div className={integrationIdentityOnly ? "fcr-active-group" : undefined}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 4 }}>
               <div style={col}>
                 <span style={{ ...lbl, display: "flex", alignItems: "center", gap: 4 }}>
@@ -805,8 +843,10 @@ export function RevampAlboBStep1DatiAziendaliPage() {
                 {uploadError}
               </div>
             ) : <div style={{ marginBottom: 16 }} />}
+            </div>
 
             {/* Referente operativo */}
+            <fieldset disabled={integrationIdentityOnly} className={integrationIdentityOnly ? "fcr-locked" : undefined}>
             <SectionLabel label="Referente operativo per Gruppo Solco" />
             <p style={{ fontSize: "0.82rem", color: MUTED, marginBottom: 12 }}>
               La persona di contatto per la gestione quotidiana del rapporto con il Gruppo. Può coincidere con il legale rappresentante.
@@ -817,6 +857,7 @@ export function RevampAlboBStep1DatiAziendaliPage() {
               <Field label="E-mail" required type="email" value={form.refEmail} onChange={set("refEmail")} error={errors.refEmail} placeholder="referente@azienda.it" />
               <PhoneField label="Telefono" required code={form.refTelefonoCode} onCodeChange={(value) => setForm((prev) => ({ ...prev, refTelefonoCode: value }))} value={form.refTelefono} onChange={set("refTelefono")} error={errors.refTelefono} />
             </div>
+            </fieldset>
 
             {/* Error summary */}
             {errorCount > 0 ? (
@@ -841,7 +882,7 @@ export function RevampAlboBStep1DatiAziendaliPage() {
             </div>
           </div>
           <button className="wizard-nav-button wizard-nav-button-next" type="submit" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: GREEN, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, fontSize: "0.85rem", cursor: "pointer" }}>
-            Sezione successiva <ArrowRight size={15} />
+            {integrationEdit || renewalEdit ? "Salva documento" : "Sezione successiva"} <ArrowRight size={15} />
           </button>
         </div>
       </form>

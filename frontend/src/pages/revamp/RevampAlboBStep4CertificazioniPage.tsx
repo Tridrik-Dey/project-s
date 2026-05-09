@@ -4,7 +4,6 @@ import { ArrowLeft, ArrowRight, CheckCircle, Info, Save, Upload } from "lucide-r
 import { useAuth } from "../../auth/AuthContext";
 import {
   createRevampApplicationDraft,
-  answerRevampIntegrationRequest,
   getMyLatestRevampApplication,
   getRevampApplicationSections,
   saveRevampApplicationSection,
@@ -12,7 +11,9 @@ import {
   type AttachmentUploadResult
 } from "../../api/revampApplicationApi";
 import { loadRevampApplicationIdForRegistry, saveRevampApplicationIdForRegistry } from "../../utils/revampApplicationSession";
-import { clearRevampIntegrationEditSession, isRevampIntegrationEditFor } from "../../utils/revampIntegrationEditSession";
+import { clearRevampIntegrationEditSession, integrationEditHasAnyCode, isRevampIntegrationEditFor } from "../../utils/revampIntegrationEditSession";
+import { completeRevampIntegrationEdit } from "../../utils/revampIntegrationCompletion";
+import { clearRevampDocumentRenewalEditSession, isRevampDocumentRenewalEditFor, requestRevampDocumentRenewalDrawerReopen } from "../../utils/revampDocumentRenewalEditSession";
 
 const GREEN = "#1a5c3a";
 const MUTED = "#6b7280";
@@ -92,10 +93,11 @@ function StepBar({ active }: { active: number }) {
   );
 }
 
-function FileInput({ label, required, fileName, onChange, hintText, tooltip, uploading }: {
+function FileInput({ label, required, fileName, onChange, hintText, tooltip, uploading, disabled }: {
   label: string; required?: boolean; fileName: string; hintText?: string; tooltip?: string;
   onChange: (e: ChangeEvent<HTMLInputElement>) => void;
   uploading?: boolean;
+  disabled?: boolean;
 }) {
   const [showTip, setShowTip] = useState(false);
   return (
@@ -121,12 +123,12 @@ function FileInput({ label, required, fileName, onChange, hintText, tooltip, upl
           </span>
         ) : null}
       </span>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", border: `1.5px dashed ${fileName ? GREEN : "#d1d5db"}`, borderRadius: 6, cursor: uploading ? "wait" : "pointer", background: fileName ? "#f0fdf4" : "#fafafa", transition: "border-color .15s", opacity: uploading ? 0.7 : 1 }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", border: `1.5px dashed ${fileName ? GREEN : "#d1d5db"}`, borderRadius: 6, cursor: disabled ? "default" : uploading ? "wait" : "pointer", background: fileName ? "#f0fdf4" : "#fafafa", transition: "border-color .15s", opacity: uploading || disabled ? 0.7 : 1 }}>
         <Upload size={14} color={fileName ? GREEN : "#9ca3af"} />
         <span style={{ fontSize: "0.83rem", color: fileName ? GREEN : "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {uploading ? "Caricamento in corso..." : (fileName || "Seleziona file PDF (max 5 MB)")}
         </span>
-        <input type="file" accept=".pdf" onChange={onChange} disabled={uploading} style={{ display: "none" }} />
+        <input type="file" accept=".pdf" onChange={onChange} disabled={uploading || disabled} style={{ display: "none" }} />
       </label>
     </div>
   );
@@ -136,6 +138,20 @@ export function RevampAlboBStep4CertificazioniPage() {
   const navigate = useNavigate();
   const { auth } = useAuth();
   const integrationEdit = isRevampIntegrationEditFor("ALBO_B", 4);
+  const renewalEdit = isRevampDocumentRenewalEditFor("ALBO_B", 4);
+  const lockedEdit = Boolean(integrationEdit || renewalEdit);
+  const renewalDocs = (renewalEdit?.documents ?? (renewalEdit ? [renewalEdit] : []));
+  const renewalHasDocumentType = (documentType: string) => renewalDocs.some(item => item.documentType === documentType);
+  const allowVisura = !lockedEdit || integrationEditHasAnyCode(integrationEdit, ["VISURA_CAMERALE"]) || renewalHasDocumentType("VISURA_CAMERALE");
+  const allowDurc = !lockedEdit || integrationEditHasAnyCode(integrationEdit, ["DURC"]) || renewalHasDocumentType("DURC");
+  const allowCompanyProfile = !lockedEdit || integrationEditHasAnyCode(integrationEdit, ["COMPANY_PROFILE"]) || renewalHasDocumentType("COMPANY_PROFILE");
+  const allowCertAttachments = !lockedEdit || integrationEditHasAnyCode(integrationEdit, [
+    "CERT_ISO_9001",
+    "CERT_ISO_14001",
+    "CERT_ISO_45001",
+    "CERT_SA8000",
+    "CERTIFICATIONS_ACCREDITATIONS"
+  ]) || renewalHasDocumentType("CERTIFICATION");
 
   const [certs, setCerts] = useState<Record<string, CertRecord>>(
     Object.fromEntries(CERTS_ISO.map(c => [c.key, { presente: "", enteCertificatore: "", scadenza: "", fileName: "" }]))
@@ -236,7 +252,7 @@ export function RevampAlboBStep4CertificazioniPage() {
       }
     }
 
-    const existingAppId = loadRevampApplicationIdForRegistry("ALBO_B");
+    const existingAppId = renewalEdit?.applicationId ?? loadRevampApplicationIdForRegistry("ALBO_B");
     if (existingAppId) {
       getRevampApplicationSections(existingAppId, auth.token).then(applyS4).catch(() => {});
       return;
@@ -247,7 +263,7 @@ export function RevampAlboBStep4CertificazioniPage() {
       saveRevampApplicationIdForRegistry("ALBO_B", app.id);
       return getRevampApplicationSections(app.id, auth!.token!).then(applyS4);
     }).catch(() => {});
-  }, [auth?.token]);
+  }, [auth?.token, renewalEdit?.applicationId]);
 
   function updateCert(key: string, field: keyof CertRecord, value: string) {
     setCerts(prev => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
@@ -266,7 +282,7 @@ export function RevampAlboBStep4CertificazioniPage() {
 
   async function ensureApplicationId(): Promise<string | null> {
     if (!auth?.token) return null;
-    const existing = loadRevampApplicationIdForRegistry("ALBO_B");
+    const existing = renewalEdit?.applicationId ?? loadRevampApplicationIdForRegistry("ALBO_B");
     if (existing) return existing;
     try {
       const draft = await createRevampApplicationDraft({ registryType: "ALBO_B", sourceChannel: "PUBLIC" }, auth.token);
@@ -362,6 +378,25 @@ export function RevampAlboBStep4CertificazioniPage() {
 
   function validate(): Record<string, string> {
     const e: Record<string, string> = {};
+    if (integrationEdit || renewalEdit) {
+      if (allowVisura) {
+        if (!visuraAttachment) e.visura = "La visura camerale è obbligatoria.";
+        if (visuraAttachment && !visuraScadenza.trim()) e.visuraScadenza = "Inserisci la scadenza della visura.";
+      }
+      if (allowDurc) {
+        if (!durcAttachment) e.durc = "Il DURC è obbligatorio.";
+        if (durcAttachment && !durcScadenza.trim()) e.durcScadenza = "Inserisci la scadenza del DURC.";
+      }
+      if (allowCompanyProfile && !companyProfAttachment) e.companyProf = "Carica il company profile richiesto.";
+      if (allowCertAttachments) {
+        const requestedCertKeys = renewalDocs.map(item => item.certificationKey).filter((key): key is string => Boolean(key));
+        const hasRequestedCert = requestedCertKeys.length > 0
+          ? requestedCertKeys.every(key => Boolean(certs[key]?.attachment))
+          : Boolean(certAllegAttachment) || CERTS_ISO.some((cert) => certs[cert.key]?.attachment);
+        if (!hasRequestedCert) e.certAlleg = "Carica il certificato richiesto.";
+      }
+      return e;
+    }
     for (const c of CERTS_ISO) {
       const rec = certs[c.key];
       if (!rec.presente) e[`cert_${c.key}`] = "Indica se possiedi questa certificazione.";
@@ -401,7 +436,7 @@ export function RevampAlboBStep4CertificazioniPage() {
   async function handleSaveDraft() {
     if (!auth?.token) return;
     try {
-      const appId = loadRevampApplicationIdForRegistry("ALBO_B");
+      const appId = renewalEdit?.applicationId ?? loadRevampApplicationIdForRegistry("ALBO_B");
       if (!appId) return;
       await saveRevampApplicationSection(appId, "S4", JSON.stringify({
         certificazioni: Object.fromEntries(CERTS_ISO.map(c => [c.key, { ...certs[c.key] }])),
@@ -435,7 +470,7 @@ export function RevampAlboBStep4CertificazioniPage() {
     let savedAppId: string | null = null;
     if (auth?.token) {
       try {
-        const appId = loadRevampApplicationIdForRegistry("ALBO_B");
+        const appId = renewalEdit?.applicationId ?? loadRevampApplicationIdForRegistry("ALBO_B");
         if (appId) {
           savedAppId = appId;
           const hasISO9001 = certs.iso9001?.presente === "si";
@@ -456,14 +491,18 @@ export function RevampAlboBStep4CertificazioniPage() {
     }
     if (integrationEdit && auth?.token && savedAppId) {
       try {
-        await answerRevampIntegrationRequest(savedAppId, auth.token);
+        await completeRevampIntegrationEdit(savedAppId, auth.token, integrationEdit);
         clearRevampIntegrationEditSession();
       } catch {
         window.alert("Invio integrazione non riuscito. Controlla i dati e riprova.");
         return;
       }
     }
-    navigate(integrationEdit?.returnPath ?? "/apply/albo-b/step/5");
+    if (renewalEdit && auth?.token && savedAppId) {
+      requestRevampDocumentRenewalDrawerReopen(savedAppId, renewalEdit.batchId);
+      clearRevampDocumentRenewalEditSession();
+    }
+    navigate(integrationEdit?.returnPath ?? renewalEdit?.returnPath ?? "/apply/albo-b/step/5");
   }
 
   const errors = { ...manualErrors, ...(triedSubmit ? validate() : {}) };
@@ -488,9 +527,9 @@ export function RevampAlboBStep4CertificazioniPage() {
         </button>
       </div>
 
-      {integrationEdit ? (
+      {integrationEdit || renewalEdit ? (
         <div style={{ background: "#eff6ff", borderBottom: "1px solid #bfdbfe", padding: "12px 40px", color: "#174f82", fontSize: "0.86rem", fontWeight: 700 }}>
-          Integrazione richiesta - Correggi la sezione Certificazioni, salva e invia la risposta.
+          {renewalEdit ? `Rinnovo documento - Aggiorna solo ${renewalEdit.documentLabel}, poi salva e invia.` : "Integrazione richiesta - Correggi la sezione Certificazioni, salva e invia la risposta."}
         </div>
       ) : (
         <StepBar active={3} />
@@ -502,6 +541,7 @@ export function RevampAlboBStep4CertificazioniPage() {
           <p style={{ fontSize: "0.82rem", color: MUTED, margin: 0 }}>Per ogni certificazione indica se è presente. Se sì, fornisci i dettagli. Carica gli allegati obbligatori.</p>
           <div style={{ height: 1, background: "#f3f4f6", margin: "16px 0 4px" }} />
 
+          <div className={lockedEdit ? "fcr-locked" : undefined}>
           {/* Certificazioni ISO */}
           <SectionLabel label="Certificazioni" />
           {CERTS_ISO.map(c => {
@@ -614,6 +654,7 @@ export function RevampAlboBStep4CertificazioniPage() {
               ) : null}
             </div>
           </div>
+          </div>
 
           {/* Allegati aziendali */}
           <SectionLabel label="Allegati aziendali" />
@@ -628,7 +669,7 @@ export function RevampAlboBStep4CertificazioniPage() {
           {/* TOP ROW — Visura + DURC */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
             <div style={col}>
-              <FileInput label="Visura camerale ordinaria" required fileName={visura} onChange={handleFile("VISURA_CAMERALE", setVisura, setVisuraAttachment, 5)} uploading={uploadingField === "VISURA_CAMERALE"} hintText="PDF max 5 MB" tooltip="emissione non anteriore a 6 mesi" />
+              <FileInput label="Visura camerale ordinaria" required fileName={visura} onChange={handleFile("VISURA_CAMERALE", setVisura, setVisuraAttachment, 5)} uploading={uploadingField === "VISURA_CAMERALE"} disabled={!allowVisura} hintText="PDF max 5 MB" tooltip="emissione non anteriore a 6 mesi" />
               {errors.visura ? <span style={errTxt}>{errors.visura}</span> : null}
               <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8, maxWidth: 180 }}>
                 <span style={lbl}>Scadenza <span style={{ color: ERR }}>*</span></span>
@@ -640,13 +681,14 @@ export function RevampAlboBStep4CertificazioniPage() {
                     setManualErrors(prev => ({ ...prev, visuraScadenza: msg }));
                   }}
                   placeholder="MM/AAAA"
+                  disabled={!allowVisura}
                   style={baseInput(!!errors.visuraScadenza)}
                 />
                 {errors.visuraScadenza ? <span style={errTxt}>{errors.visuraScadenza}</span> : null}
               </div>
             </div>
             <div style={col}>
-              <FileInput label="DURC — Documento Unico Regolarità Contributiva" required fileName={durc} onChange={handleFile("DURC", setDurc, setDurcAttachment, 5)} uploading={uploadingField === "DURC"} hintText="PDF max 5 MB" tooltip="validità 120 giorni" />
+              <FileInput label="DURC — Documento Unico Regolarità Contributiva" required fileName={durc} onChange={handleFile("DURC", setDurc, setDurcAttachment, 5)} uploading={uploadingField === "DURC"} disabled={!allowDurc} hintText="PDF max 5 MB" tooltip="validità 120 giorni" />
               {errors.durc ? <span style={errTxt}>{errors.durc}</span> : null}
               <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8, maxWidth: 180 }}>
                 <span style={lbl}>Scadenza <span style={{ color: ERR }}>*</span></span>
@@ -658,6 +700,7 @@ export function RevampAlboBStep4CertificazioniPage() {
                     setManualErrors(prev => ({ ...prev, durcScadenza: msg }));
                   }}
                   placeholder="MM/AAAA"
+                  disabled={!allowDurc}
                   style={baseInput(!!errors.durcScadenza)}
                 />
                 {errors.durcScadenza ? <span style={errTxt}>{errors.durcScadenza}</span> : null}
@@ -666,9 +709,9 @@ export function RevampAlboBStep4CertificazioniPage() {
           </div>
           {/* BOTTOM ROW — Company profile + ISO certs */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <FileInput label="Company profile / presentazione aziendale" fileName={companyProf} onChange={handleFile("COMPANY_PROFILE", setCompanyProf, setCompanyProfAttachment, 10)} uploading={uploadingField === "COMPANY_PROFILE"} hintText="PDF max 10 MB — consigliato" />
+            <FileInput label="Company profile / presentazione aziendale" fileName={companyProf} onChange={handleFile("COMPANY_PROFILE", setCompanyProf, setCompanyProfAttachment, 10)} uploading={uploadingField === "COMPANY_PROFILE"} disabled={!allowCompanyProfile} hintText="PDF max 10 MB — consigliato" />
             <div style={col}>
-              <FileInput label="Certificati ISO e accreditamenti" fileName={certAlleg} onChange={handleFile("CERTIFICATION", setCertAlleg, setCertAllegAttachment, 10)} uploading={uploadingField === "CERTIFICATION"} hintText="PDF — un file per certificato (o archivio ZIP)" />
+              <FileInput label="Certificati ISO e accreditamenti" fileName={certAlleg} onChange={handleFile("CERTIFICATION", setCertAlleg, setCertAllegAttachment, 10)} uploading={uploadingField === "CERTIFICATION"} disabled={!allowCertAttachments} hintText="PDF — un file per certificato (o archivio ZIP)" />
               {errors.certAlleg ? <span style={errTxt}>{errors.certAlleg}</span> : null}
             </div>
           </div>
@@ -684,11 +727,11 @@ export function RevampAlboBStep4CertificazioniPage() {
 
       {/* Bottom nav */}
       <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 40px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
-        <Link className="wizard-nav-button wizard-nav-button-prev" to={integrationEdit?.returnPath ?? "/apply/albo-b/step/3"} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: "#fff", border: `1.5px solid ${GREEN}`, borderRadius: 6, fontWeight: 600, fontSize: "0.85rem", color: GREEN, textDecoration: "none" }}>
-          <ArrowLeft size={15} /> {integrationEdit ? "Torna alla richiesta" : "Sezione precedente"}
+        <Link className="wizard-nav-button wizard-nav-button-prev" to={integrationEdit?.returnPath ?? renewalEdit?.returnPath ?? "/apply/albo-b/step/3"} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: "#fff", border: `1.5px solid ${GREEN}`, borderRadius: 6, fontWeight: 600, fontSize: "0.85rem", color: GREEN, textDecoration: "none" }}>
+          <ArrowLeft size={15} /> {integrationEdit || renewalEdit ? "Torna alla richiesta" : "Sezione precedente"}
         </Link>
-        {integrationEdit ? (
-          <div style={{ fontSize: "0.82rem", color: MUTED, fontWeight: 700 }}>Modalita integrazione</div>
+        {integrationEdit || renewalEdit ? (
+          <div style={{ fontSize: "0.82rem", color: MUTED, fontWeight: 700 }}>{renewalEdit ? "Modalita rinnovo documento" : "Modalita integrazione"}</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
             <span style={{ fontSize: "0.78rem", color: MUTED }}>Avanzamento: <strong>80%</strong></span>
@@ -698,7 +741,7 @@ export function RevampAlboBStep4CertificazioniPage() {
           </div>
         )}
         <button className="wizard-nav-button wizard-nav-button-next" type="button" onClick={() => void handleNext()} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: GREEN, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, fontSize: "0.85rem", cursor: "pointer" }}>
-          {integrationEdit ? "Salva e invia integrazione" : "Sezione successiva"} <ArrowRight size={15} />
+          {renewalEdit ? "Salva e invia documento" : integrationEdit ? "Salva e invia integrazione" : "Sezione successiva"} <ArrowRight size={15} />
         </button>
       </div>
     </div>

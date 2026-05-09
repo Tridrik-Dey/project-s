@@ -1,7 +1,9 @@
 package com.supplierplatform.revamp.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.supplierplatform.common.EntityNotFoundException;
+import com.supplierplatform.revamp.dto.AdminFieldChangeRequestRowDto;
 import com.supplierplatform.revamp.dto.FieldChangeRequestDto;
 import com.supplierplatform.revamp.dto.RevampAuditEventInputDto;
 import com.supplierplatform.revamp.enums.ApplicationStatus;
@@ -12,6 +14,9 @@ import com.supplierplatform.revamp.model.RevampApplication;
 import com.supplierplatform.revamp.model.RevampApplicationSection;
 import com.supplierplatform.revamp.model.RevampFieldChangeRequest;
 import com.supplierplatform.revamp.model.RevampReviewCase;
+import com.supplierplatform.revamp.model.RevampSupplierRegistryProfile;
+import com.supplierplatform.revamp.repository.RevampSupplierRegistryProfileDetailRepository;
+import com.supplierplatform.revamp.repository.RevampSupplierRegistryProfileRepository;
 import com.supplierplatform.revamp.repository.RevampApplicationRepository;
 import com.supplierplatform.revamp.repository.RevampApplicationSectionRepository;
 import com.supplierplatform.revamp.repository.RevampFieldChangeRequestRepository;
@@ -42,6 +47,8 @@ public class RevampFieldChangeRequestService {
     private final RevampApplicationRepository applicationRepository;
     private final RevampApplicationSectionRepository sectionRepository;
     private final RevampReviewCaseRepository reviewCaseRepository;
+    private final RevampSupplierRegistryProfileRepository profileRepository;
+    private final RevampSupplierRegistryProfileDetailRepository profileDetailRepository;
     private final UserRepository userRepository;
     private final RevampAuditService auditService;
     private final RevampGovernanceAuthorizationService governanceAuthorizationService;
@@ -61,12 +68,9 @@ public class RevampFieldChangeRequestService {
             throw new AccessDeniedException("You do not own this application.");
         }
 
-        // Block duplicate active requests for the same section
-        fcrRepository.findFirstByApplicationIdAndSectionKeyAndStatusIn(applicationId, sectionKey, ACTIVE_STATUSES)
-                .ifPresent(existing -> {
-                    throw new IllegalStateException(
-                            "An active change request already exists for section " + sectionKey + ".");
-                });
+        if (!fcrRepository.findByApplicationIdAndStatusIn(applicationId, ACTIVE_STATUSES).isEmpty()) {
+            throw new IllegalStateException("An active change request already exists for this application.");
+        }
 
         RevampFieldChangeRequest fcr = new RevampFieldChangeRequest();
         fcr.setApplication(application);
@@ -105,9 +109,15 @@ public class RevampFieldChangeRequestService {
         }
 
         // Snapshot the current section value for the audit trail
-        sectionRepository.findByApplicationIdAndSectionKeyAndIsLatestTrue(
-                fcr.getApplication().getId(), fcr.getSectionKey()
-        ).ifPresent(section -> fcr.setBeforeValueJson(section.getPayloadJson()));
+        String applicationSectionKey = parentSectionKey(fcr.getApplication().getId(), fcr.getSectionKey());
+        JsonNode approvedSnapshot = approvedProjectedSection(fcr.getApplication().getId(), applicationSectionKey);
+        if (approvedSnapshot != null && !approvedSnapshot.isMissingNode() && !approvedSnapshot.isNull()) {
+            fcr.setBeforeValueJson(approvedSnapshot);
+        } else {
+            sectionRepository.findByApplicationIdAndSectionKeyAndIsLatestTrue(
+                    fcr.getApplication().getId(), applicationSectionKey
+            ).ifPresent(section -> fcr.setBeforeValueJson(section.getPayloadJson()));
+        }
 
         User admin = getUser(adminUserId);
         fcr.setUnlockedByUser(admin);
@@ -129,6 +139,7 @@ public class RevampFieldChangeRequestService {
                 "{\"status\":\"UNLOCKED\"}",
                 "{\"applicationId\":\"" + fcr.getApplication().getId()
                         + "\",\"sectionKey\":\"" + esc(fcr.getSectionKey())
+                        + "\",\"applicationSectionKey\":\"" + esc(applicationSectionKey)
                         + "\",\"adminEmail\":\"" + esc(admin.getEmail()) + "\"}"
         ));
 
@@ -185,10 +196,11 @@ public class RevampFieldChangeRequestService {
         }
 
         // Snapshot the updated section value for the audit trail
+        String applicationSectionKey = parentSectionKey(application.getId(), fcr.getSectionKey());
         RevampApplicationSection updatedSection = sectionRepository
-                .findByApplicationIdAndSectionKeyAndIsLatestTrue(application.getId(), fcr.getSectionKey())
+                .findByApplicationIdAndSectionKeyAndIsLatestTrue(application.getId(), applicationSectionKey)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Section " + fcr.getSectionKey() + " not found for application."));
+                        "Section " + applicationSectionKey + " not found for application."));
 
         fcr.setAfterValueJson(updatedSection.getPayloadJson());
         fcr.setSubmittedAt(LocalDateTime.now());
@@ -221,6 +233,7 @@ public class RevampFieldChangeRequestService {
                 "{\"status\":\"SUBMITTED\",\"appStatus\":\"FIELD_CHANGE_IN_PROGRESS\"}",
                 "{\"applicationId\":\"" + application.getId()
                         + "\",\"sectionKey\":\"" + esc(fcr.getSectionKey())
+                        + "\",\"applicationSectionKey\":\"" + esc(applicationSectionKey)
                         + "\",\"reviewCaseId\":\"" + savedCase.getId() + "\"}"
         ));
 
@@ -240,6 +253,7 @@ public class RevampFieldChangeRequestService {
                 application.setStatus(ApplicationStatus.APPROVED);
             } else {
                 fcr.setStatus(FieldChangeRequestStatus.REJECTED);
+                restoreBeforeValue(fcr);
                 application.setStatus(ApplicationStatus.APPROVED);
             }
 
@@ -265,10 +279,28 @@ public class RevampFieldChangeRequestService {
 
     // ── Queries ────────────────────────────────────────────────────────────
 
+    @Transactional
+    public void markUnderReview(UUID reviewCaseId) {
+        fcrRepository.findByReviewCaseId(reviewCaseId).ifPresent(fcr -> {
+            if (fcr.getStatus() == FieldChangeRequestStatus.SUBMITTED) {
+                fcr.setStatus(FieldChangeRequestStatus.UNDER_REVIEW);
+                fcrRepository.save(fcr);
+            }
+        });
+    }
+
     @Transactional(readOnly = true)
     public List<FieldChangeRequestDto> listForApplication(UUID applicationId) {
         return fcrRepository.findByApplicationIdOrderByCreatedAtDesc(applicationId)
                 .stream().map(this::toDto).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminFieldChangeRequestRowDto> listPendingForAdmin() {
+        return fcrRepository.findByStatusOrderByCreatedAtDesc(FieldChangeRequestStatus.PENDING_ADMIN_REVIEW)
+                .stream()
+                .map(this::toAdminRow)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -278,6 +310,11 @@ public class RevampFieldChangeRequestService {
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
+    @Transactional(readOnly = true)
+    public boolean hasReviewCase(UUID reviewCaseId) {
+        return fcrRepository.findByReviewCaseId(reviewCaseId).isPresent();
+    }
+
     private RevampFieldChangeRequest getFcr(UUID fcrId) {
         return fcrRepository.findById(fcrId)
                 .orElseThrow(() -> new EntityNotFoundException("RevampFieldChangeRequest", fcrId));
@@ -286,6 +323,78 @@ public class RevampFieldChangeRequestService {
     private RevampApplication getApplication(UUID applicationId) {
         return applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new EntityNotFoundException("RevampApplication", applicationId));
+    }
+
+    private void restoreBeforeValue(RevampFieldChangeRequest fcr) {
+        if (fcr.getApplication() == null || fcr.getBeforeValueJson() == null || fcr.getBeforeValueJson().isNull()) {
+            return;
+        }
+        String applicationSectionKey = parentSectionKey(fcr.getApplication().getId(), fcr.getSectionKey());
+        sectionRepository
+                .findByApplicationIdAndSectionKeyAndIsLatestTrue(fcr.getApplication().getId(), applicationSectionKey)
+                .ifPresent(section -> {
+                    try {
+                        section.setPayloadJson(fcr.getBeforeValueJson());
+                        sectionRepository.save(section);
+                    } catch (Exception ex) {
+                        throw new IllegalStateException("Cannot restore rejected field change section.", ex);
+                    }
+                });
+    }
+
+    private JsonNode approvedProjectedSection(UUID applicationId, String sectionKey) {
+        return profileRepository.findByApplicationId(applicationId)
+                .flatMap(profile -> profileDetailRepository.findByProfileId(profile.getId()))
+                .map(detail -> {
+                    JsonNode projected = detail.getProjectedJson();
+                    if (projected == null) return null;
+                    return projected.path("sections").path(sectionKey);
+                })
+                .orElse(null);
+    }
+
+    private AdminFieldChangeRequestRowDto toAdminRow(RevampFieldChangeRequest fcr) {
+        RevampApplication application = fcr.getApplication();
+        RevampSupplierRegistryProfile profile = application != null && application.getId() != null
+                ? profileRepository.findByApplicationId(application.getId()).orElse(null)
+                : null;
+        String displayName = profile != null && profile.getDisplayName() != null && !profile.getDisplayName().isBlank()
+                ? profile.getDisplayName()
+                : resolveApplicationDisplayName(application);
+        String supplierEmail = application != null && application.getApplicantUser() != null
+                ? application.getApplicantUser().getEmail()
+                : null;
+        return new AdminFieldChangeRequestRowDto(
+                fcr.getId(),
+                application != null ? application.getId() : null,
+                application != null ? application.getProtocolCode() : null,
+                application != null ? application.getRegistryType() : null,
+                displayName,
+                supplierEmail,
+                fcr.getSectionKey(),
+                fcr.getSupplierMessage(),
+                fcr.getStatus(),
+                fcr.getCreatedAt(),
+                fcr.getUpdatedAt()
+        );
+    }
+
+    private String resolveApplicationDisplayName(RevampApplication application) {
+        if (application == null || application.getId() == null) return null;
+        return sectionRepository
+                .findByApplicationIdAndSectionKeyAndIsLatestTrue(application.getId(), "S1")
+                .map(RevampApplicationSection::getPayloadJson)
+                .map(payload -> {
+                    String company = payload.path("companyName").asText("").trim();
+                    if (!company.isBlank()) return company;
+                    String firstName = payload.path("firstName").asText("").trim();
+                    String lastName = payload.path("lastName").asText("").trim();
+                    String fullName = (firstName + " " + lastName).trim();
+                    if (!fullName.isBlank()) return fullName;
+                    String legalRep = payload.path("legalRepresentativeName").asText("").trim();
+                    return legalRep.isBlank() ? null : legalRep;
+                })
+                .orElse(null);
     }
 
     private User getUser(UUID userId) {
@@ -324,5 +433,24 @@ public class RevampFieldChangeRequestService {
     private static String esc(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private String parentSectionKey(UUID applicationId, String fcrGroupKey) {
+        return switch (fcrGroupKey) {
+            case "foto_profilo", "dati_personali", "dati_fiscali", "indirizzo", "contatti",
+                 "dati_aziendali", "identificativi", "sede_legale", "sede_operativa",
+                 "contatti_inst", "leg_rappr", "ref_operativo" -> "S1";
+            case "tipo_prof", "comp_secondarie", "ateco", "dimensione", "ateco_b",
+                 "regioni_op", "acc_formazione", "terzo_settore" -> "S2";
+            case "servizi_cat" -> "S3";
+            case "servizi_offerti", "cert_specifiche" -> "S3B";
+            case "istruzione", "territorio" -> sectionRepository
+                    .findByApplicationIdAndSectionKeyAndIsLatestTrue(applicationId, "S3B")
+                    .isPresent() ? "S3B" : "S3A";
+            case "competenze", "lingue", "tariffe", "esperienze" -> "S3A";
+            case "cap_operativa", "referenze", "allegati", "certificazioni", "allegati_b" -> "S4";
+            case "dichiarazioni", "dichiarazioni_b" -> "S5";
+            default -> fcrGroupKey;
+        };
     }
 }

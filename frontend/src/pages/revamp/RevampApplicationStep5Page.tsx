@@ -14,6 +14,8 @@ import { useAuth } from "../../auth/AuthContext";
 import { useI18n } from "../../i18n/I18nContext";
 import { saveRevampApplicationSession } from "../../utils/revampApplicationSession";
 import { resolveStepGuardRedirect } from "./revampFlow";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -114,6 +116,7 @@ export function RevampApplicationStep5Page() {
   const { applicationId } = useParams();
   const { auth } = useAuth();
   const { t } = useI18n();
+  const fcr = useFcrEditMode();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [summary, setSummary] = useState<RevampApplicationSummary | null>(null);
@@ -199,6 +202,12 @@ export function RevampApplicationStep5Page() {
     setSaveState((prev) => (prev === "saving" ? prev : "dirty"));
   }
 
+  function fcrGroup(key: string): string {
+    if (!fcr.active) return "fcr-group";
+    if (fcr.isLocked(key)) return "fcr-group fcr-locked";
+    return "fcr-group fcr-active-group";
+  }
+
   async function sendOtp() {
     if (!applicationId || !auth?.token || otpBusy) return;
     setOtpBusy(true);
@@ -275,6 +284,25 @@ export function RevampApplicationStep5Page() {
     }
   }
 
+  async function saveSectionProgrammatic(): Promise<void> {
+    if (!applicationId || !auth?.token) throw new Error("missing context");
+    setSaveState("saving");
+    try {
+      const saved = await saveRevampApplicationSection(
+        applicationId,
+        "S5",
+        JSON.stringify(payload),
+        completed,
+        auth.token
+      );
+      setLastSavedAt(new Date(saved.updatedAt).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }));
+      setSaveState("saved");
+    } catch (err) {
+      setSaveState("error");
+      throw err;
+    }
+  }
+
   if (!applicationId) return <Navigate to="/apply" replace />;
   if (!auth?.token) return <Navigate to="/login" replace />;
 
@@ -306,229 +334,247 @@ export function RevampApplicationStep5Page() {
     return <Navigate to={guardRedirect} replace />;
   }
 
+  const fcrGroupKey = summary.registryType === "ALBO_A" ? "dichiarazioni" : "dichiarazioni_b";
+
   return (
     <section className="stack">
       <div className="panel revamp-step-header">
         <h2>{t("revamp.step5.title")}</h2>
         <p className="subtle">
-          {t("revamp.step5.subtitle", { id: applicationId, state: saveLabel })}
+          {fcr.active
+            ? `Candidatura ${applicationId} - Richiesta di modifica: ${saveLabel}`
+            : t("revamp.step5.subtitle", { id: applicationId, state: saveLabel })}
         </p>
       </div>
 
       <form className="panel stack" onSubmit={onSave}>
-        <h3 className="revamp-step-subtitle"><CheckSquare className="h-4 w-4" /> {t("revamp.step5.mandatoryConsents")}</h3>
-        <label className="review-check-item">
-          <input
-            type="checkbox"
-            checked={payload.truthfulnessDeclaration}
-            onChange={(e) => {
-              setPayload((prev) => ({ ...prev, truthfulnessDeclaration: e.target.checked }));
-              markDirty();
-            }}
-          />
-          <span>{t("revamp.step5.consent.truthful")}</span>
-        </label>
-        <label className="review-check-item">
-          <input
-            type="checkbox"
-            checked={payload.noConflictOfInterest}
-            onChange={(e) => {
-              setPayload((prev) => ({ ...prev, noConflictOfInterest: e.target.checked }));
-              markDirty();
-            }}
-          />
-          <span>{t("revamp.step5.consent.noConflict")}</span>
-        </label>
-        <label className="review-check-item">
-          <input
-            type="checkbox"
-            checked={payload.noCriminalConvictions}
-            onChange={(e) => {
-              setPayload((prev) => ({ ...prev, noCriminalConvictions: e.target.checked }));
-              markDirty();
-            }}
-          />
-          <span>{t("revamp.step5.consent.noCriminalConvictions")}</span>
-        </label>
-        <label className="review-check-item">
-          <input
-            type="checkbox"
-            checked={payload.privacyAccepted}
-            onChange={(e) => {
-              setPayload((prev) => ({ ...prev, privacyAccepted: e.target.checked }));
-              markDirty();
-            }}
-          />
-          <span>{t("revamp.step5.consent.privacy")}</span>
-        </label>
-        <label className="review-check-item">
-          <input
-            type="checkbox"
-            checked={payload.ethicalCodeAccepted}
-            onChange={(e) => {
-              setPayload((prev) => ({ ...prev, ethicalCodeAccepted: e.target.checked }));
-              markDirty();
-            }}
-          />
-          <span>{t("revamp.step5.consent.ethicalCode")}</span>
-        </label>
-        <label className="review-check-item">
-          <input
-            type="checkbox"
-            checked={payload.qualityEnvSafetyAccepted}
-            onChange={(e) => {
-              setPayload((prev) => ({ ...prev, qualityEnvSafetyAccepted: e.target.checked }));
-              markDirty();
-            }}
-          />
-          <span>{t("revamp.step5.consent.quality")}</span>
-        </label>
-        <label className="review-check-item">
-          <input
-            type="checkbox"
-            checked={payload.alboDataProcessingConsent}
-            onChange={(e) => {
-              setPayload((prev) => ({ ...prev, alboDataProcessingConsent: e.target.checked }));
-              markDirty();
-            }}
-          />
-          <span>{t("revamp.step5.consent.alboDataProcessing")}</span>
-        </label>
-        {summary.registryType === "ALBO_A" ? (
+        <fieldset className={fcrGroup(fcrGroupKey)} disabled={fcr.active && fcr.isLocked(fcrGroupKey)}>
+          <legend className="sr-only">Dichiarazioni e consensi</legend>
+
+          <h3 className="revamp-step-subtitle"><CheckSquare className="h-4 w-4" /> {t("revamp.step5.mandatoryConsents")}</h3>
           <label className="review-check-item">
             <input
               type="checkbox"
-              checked={payload.dlgs81ComplianceWhenInPresence}
+              checked={payload.truthfulnessDeclaration}
               onChange={(e) => {
-                setPayload((prev) => ({ ...prev, dlgs81ComplianceWhenInPresence: e.target.checked }));
+                setPayload((prev) => ({ ...prev, truthfulnessDeclaration: e.target.checked }));
                 markDirty();
               }}
             />
-            <span>
-              {requiresDlgs81
-                ? t("revamp.step5.consent.dlgs81Required")
-                : t("revamp.step5.consent.dlgs81Optional")}
-            </span>
+            <span>{t("revamp.step5.consent.truthful")}</span>
           </label>
-        ) : null}
-        {summary.registryType === "ALBO_B" ? (
-          <>
+          <label className="review-check-item">
+            <input
+              type="checkbox"
+              checked={payload.noConflictOfInterest}
+              onChange={(e) => {
+                setPayload((prev) => ({ ...prev, noConflictOfInterest: e.target.checked }));
+                markDirty();
+              }}
+            />
+            <span>{t("revamp.step5.consent.noConflict")}</span>
+          </label>
+          <label className="review-check-item">
+            <input
+              type="checkbox"
+              checked={payload.noCriminalConvictions}
+              onChange={(e) => {
+                setPayload((prev) => ({ ...prev, noCriminalConvictions: e.target.checked }));
+                markDirty();
+              }}
+            />
+            <span>{t("revamp.step5.consent.noCriminalConvictions")}</span>
+          </label>
+          <label className="review-check-item">
+            <input
+              type="checkbox"
+              checked={payload.privacyAccepted}
+              onChange={(e) => {
+                setPayload((prev) => ({ ...prev, privacyAccepted: e.target.checked }));
+                markDirty();
+              }}
+            />
+            <span>{t("revamp.step5.consent.privacy")}</span>
+          </label>
+          <label className="review-check-item">
+            <input
+              type="checkbox"
+              checked={payload.ethicalCodeAccepted}
+              onChange={(e) => {
+                setPayload((prev) => ({ ...prev, ethicalCodeAccepted: e.target.checked }));
+                markDirty();
+              }}
+            />
+            <span>{t("revamp.step5.consent.ethicalCode")}</span>
+          </label>
+          <label className="review-check-item">
+            <input
+              type="checkbox"
+              checked={payload.qualityEnvSafetyAccepted}
+              onChange={(e) => {
+                setPayload((prev) => ({ ...prev, qualityEnvSafetyAccepted: e.target.checked }));
+                markDirty();
+              }}
+            />
+            <span>{t("revamp.step5.consent.quality")}</span>
+          </label>
+          <label className="review-check-item">
+            <input
+              type="checkbox"
+              checked={payload.alboDataProcessingConsent}
+              onChange={(e) => {
+                setPayload((prev) => ({ ...prev, alboDataProcessingConsent: e.target.checked }));
+                markDirty();
+              }}
+            />
+            <span>{t("revamp.step5.consent.alboDataProcessing")}</span>
+          </label>
+          {summary.registryType === "ALBO_A" ? (
             <label className="review-check-item">
               <input
                 type="checkbox"
-                checked={payload.antimafiaDeclaration}
+                checked={payload.dlgs81ComplianceWhenInPresence}
                 onChange={(e) => {
-                  setPayload((prev) => ({ ...prev, antimafiaDeclaration: e.target.checked }));
+                  setPayload((prev) => ({ ...prev, dlgs81ComplianceWhenInPresence: e.target.checked }));
                   markDirty();
                 }}
               />
-              <span>{t("revamp.step5.consent.antimafia")}</span>
+              <span>
+                {requiresDlgs81
+                  ? t("revamp.step5.consent.dlgs81Required")
+                  : t("revamp.step5.consent.dlgs81Optional")}
+              </span>
             </label>
-            <label className="review-check-item">
-              <input
-                type="checkbox"
-                checked={payload.dlgs231Declaration}
-                onChange={(e) => {
-                  setPayload((prev) => ({ ...prev, dlgs231Declaration: e.target.checked }));
-                  markDirty();
-                }}
-              />
-              <span>{t("revamp.step5.consent.dlgs231")}</span>
-            </label>
-            <label className="review-check-item">
-              <input
-                type="checkbox"
-                checked={payload.model231Adopted}
-                onChange={(e) => {
-                  setPayload((prev) => ({ ...prev, model231Adopted: e.target.checked }));
-                  markDirty();
-                }}
-              />
-              <span>{t("revamp.step5.consent.model231Adopted")}</span>
-            </label>
-            <label className="review-check-item">
-              <input
-                type="checkbox"
-                checked={payload.fiscalContributionRegularity}
-                onChange={(e) => {
-                  setPayload((prev) => ({ ...prev, fiscalContributionRegularity: e.target.checked }));
-                  markDirty();
-                }}
-              />
-              <span>{t("revamp.step5.consent.fiscalRegularity")}</span>
-            </label>
-            <label className="review-check-item">
-              <input
-                type="checkbox"
-                checked={payload.gdprComplianceAndDpo}
-                onChange={(e) => {
-                  setPayload((prev) => ({ ...prev, gdprComplianceAndDpo: e.target.checked }));
-                  markDirty();
-                }}
-              />
-              <span>{t("revamp.step5.consent.gdprDpo")}</span>
-            </label>
-          </>
-        ) : null}
+          ) : null}
+          {summary.registryType === "ALBO_B" ? (
+            <>
+              <label className="review-check-item">
+                <input
+                  type="checkbox"
+                  checked={payload.antimafiaDeclaration}
+                  onChange={(e) => {
+                    setPayload((prev) => ({ ...prev, antimafiaDeclaration: e.target.checked }));
+                    markDirty();
+                  }}
+                />
+                <span>{t("revamp.step5.consent.antimafia")}</span>
+              </label>
+              <label className="review-check-item">
+                <input
+                  type="checkbox"
+                  checked={payload.dlgs231Declaration}
+                  onChange={(e) => {
+                    setPayload((prev) => ({ ...prev, dlgs231Declaration: e.target.checked }));
+                    markDirty();
+                  }}
+                />
+                <span>{t("revamp.step5.consent.dlgs231")}</span>
+              </label>
+              <label className="review-check-item">
+                <input
+                  type="checkbox"
+                  checked={payload.model231Adopted}
+                  onChange={(e) => {
+                    setPayload((prev) => ({ ...prev, model231Adopted: e.target.checked }));
+                    markDirty();
+                  }}
+                />
+                <span>{t("revamp.step5.consent.model231Adopted")}</span>
+              </label>
+              <label className="review-check-item">
+                <input
+                  type="checkbox"
+                  checked={payload.fiscalContributionRegularity}
+                  onChange={(e) => {
+                    setPayload((prev) => ({ ...prev, fiscalContributionRegularity: e.target.checked }));
+                    markDirty();
+                  }}
+                />
+                <span>{t("revamp.step5.consent.fiscalRegularity")}</span>
+              </label>
+              <label className="review-check-item">
+                <input
+                  type="checkbox"
+                  checked={payload.gdprComplianceAndDpo}
+                  onChange={(e) => {
+                    setPayload((prev) => ({ ...prev, gdprComplianceAndDpo: e.target.checked }));
+                    markDirty();
+                  }}
+                />
+                <span>{t("revamp.step5.consent.gdprDpo")}</span>
+              </label>
+            </>
+          ) : null}
 
-        <h3 className="revamp-step-subtitle"><KeyRound className="h-4 w-4" /> {t("revamp.step5.otp.title")}</h3>
-        <label className={`floating-field ${payload.otpCode ? "has-value" : ""}`}>
-          <input
-            className="floating-input auth-input"
-            inputMode="numeric"
-            maxLength={6}
-            value={payload.otpCode}
-            onChange={(e) => {
-              const onlyDigits = e.target.value.replace(/\D/g, "").slice(0, 6);
-              setPayload((prev) => ({ ...prev, otpCode: onlyDigits, otpVerified: false, otpVerifiedAt: null }));
-              markDirty();
-            }}
-            placeholder=" "
-          />
-          <span className="floating-field-label">{t("revamp.step5.otp.codeLabel")}</span>
-        </label>
+          <h3 className="revamp-step-subtitle"><KeyRound className="h-4 w-4" /> {t("revamp.step5.otp.title")}</h3>
+          <label className={`floating-field ${payload.otpCode ? "has-value" : ""}`}>
+            <input
+              className="floating-input auth-input"
+              inputMode="numeric"
+              maxLength={6}
+              value={payload.otpCode}
+              onChange={(e) => {
+                const onlyDigits = e.target.value.replace(/\D/g, "").slice(0, 6);
+                setPayload((prev) => ({ ...prev, otpCode: onlyDigits, otpVerified: false, otpVerifiedAt: null }));
+                markDirty();
+              }}
+              placeholder=" "
+            />
+            <span className="floating-field-label">{t("revamp.step5.otp.codeLabel")}</span>
+          </label>
+          <div className="revamp-step-actions">
+            <button type="button" className="home-btn home-btn-secondary" onClick={() => void sendOtp()} disabled={otpBusy}>
+              {t("revamp.step5.otp.send")}
+            </button>
+            <button type="button" className="home-btn home-btn-secondary" onClick={() => void verifyOtp()} disabled={otpBusy}>
+              {t("revamp.step5.otp.verify")}
+            </button>
+            <span className={payload.otpVerified ? "subtle" : "error"}>
+              {payload.otpVerified ? t("revamp.step5.otp.statusVerified") : t("revamp.step5.otp.statusNotVerified")}
+            </span>
+          </div>
+          {otpHint ? <p className="subtle">{otpHint}</p> : null}
+          {otpError ? <p className="error">{otpError}</p> : null}
+
+          <label className="review-check-item">
+            <input
+              type="checkbox"
+              checked={payload.marketingConsent}
+              onChange={(e) => {
+                setPayload((prev) => ({ ...prev, marketingConsent: e.target.checked }));
+                markDirty();
+              }}
+            />
+            <span>{t("revamp.step5.marketingConsent")}</span>
+          </label>
+        </fieldset>
+
         <div className="revamp-step-actions">
-          <button type="button" className="home-btn home-btn-secondary" onClick={() => void sendOtp()} disabled={otpBusy}>
-            {t("revamp.step5.otp.send")}
-          </button>
-          <button type="button" className="home-btn home-btn-secondary" onClick={() => void verifyOtp()} disabled={otpBusy}>
-            {t("revamp.step5.otp.verify")}
-          </button>
-          <span className={payload.otpVerified ? "subtle" : "error"}>
-            {payload.otpVerified ? t("revamp.step5.otp.statusVerified") : t("revamp.step5.otp.statusNotVerified")}
-          </span>
-        </div>
-        {otpHint ? <p className="subtle">{otpHint}</p> : null}
-        {otpError ? <p className="error">{otpError}</p> : null}
-
-        <label className="review-check-item">
-          <input
-            type="checkbox"
-            checked={payload.marketingConsent}
-            onChange={(e) => {
-              setPayload((prev) => ({ ...prev, marketingConsent: e.target.checked }));
-              markDirty();
-            }}
-          />
-          <span>{t("revamp.step5.marketingConsent")}</span>
-        </label>
-
-        <div className="revamp-step-actions">
-          <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/4`}>
-            {t("revamp.step5.backToStep4")}
-          </Link>
-          <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/recap`}>
-            {t("revamp.step5.goToRecap")}
-          </Link>
-          <button type="submit" className="home-btn home-btn-primary" disabled={saveState === "saving"}>
-            <Save className="h-4 w-4" />
-            <span>{saveState === "saving" ? t("revamp.step5.saving") : t("revamp.step5.saveSection")}</span>
-          </button>
-          <button type="button" className="home-btn home-btn-secondary" disabled={!completed} title={!completed ? t("revamp.step5.readyDisabledTitle") : t("revamp.step5.readyEnabledTitle")}>
-            {t("revamp.step5.readyToSubmit")}
-          </button>
+          {!fcr.active && (
+            <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/4`}>
+              {t("revamp.step5.backToStep4")}
+            </Link>
+          )}
+          {!fcr.active && (
+            <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/recap`}>
+              {t("revamp.step5.goToRecap")}
+            </Link>
+          )}
+          {!fcr.active && (
+            <button type="submit" className="home-btn home-btn-primary" disabled={saveState === "saving"}>
+              <Save className="h-4 w-4" />
+              <span>{saveState === "saving" ? t("revamp.step5.saving") : t("revamp.step5.saveSection")}</span>
+            </button>
+          )}
+          {!fcr.active && (
+            <button type="button" className="home-btn home-btn-secondary" disabled={!completed} title={!completed ? t("revamp.step5.readyDisabledTitle") : t("revamp.step5.readyEnabledTitle")}>
+              {t("revamp.step5.readyToSubmit")}
+            </button>
+          )}
         </div>
       </form>
+
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
     </section>
   );
 }

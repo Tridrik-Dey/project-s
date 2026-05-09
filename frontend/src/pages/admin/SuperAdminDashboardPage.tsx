@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Bell, Building2, ClipboardCheck, ClipboardList, Clock3, Download, LayoutDashboard, Mail, PieChart, Plus, Settings2, Users } from "lucide-react";
+import { Activity, BarChart3, Bell, Building2, ClipboardCheck, ClipboardList, Clock3, Download, LayoutDashboard, ListChecks, Mail, PieChart, Plus, Settings2, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nContext";
@@ -35,6 +35,7 @@ interface SuperAdminDashboardPageProps {
   canManageInvites: boolean;
   canExportReports: boolean;
   canAccessQueue: boolean;
+  pendingFieldChangeCount: number;
 }
 
 type ChartType = "bar" | "donut";
@@ -121,7 +122,8 @@ export function SuperAdminDashboardPage({
   loading,
   canManageInvites,
   canExportReports,
-  canAccessQueue
+  canAccessQueue,
+  pendingFieldChangeCount
 }: SuperAdminDashboardPageProps) {
   const { t } = useI18n();
   const recent = recentActivity.slice(0, 8);
@@ -169,6 +171,13 @@ export function SuperAdminDashboardPage({
   const inviteLevel = kpis.pendingInvites === 0 ? "ok" : kpis.pendingInvites <= 20 ? "attention" : "critical";
   const alertItems = [
     {
+      id: "field-change",
+      label: "Modifiche dati da sbloccare",
+      value: pendingFieldChangeCount,
+      threshold: 0,
+      route: "/admin/candidature?tab=modifiche-dati"
+    },
+    {
       id: "queue",
       label: t("admin.dashboard.candidature.title"),
       value: pendingRevision.length,
@@ -191,6 +200,16 @@ export function SuperAdminDashboardPage({
     }
   ].filter((item) => item.value > item.threshold);
   const topKpis = [
+    ...(pendingFieldChangeCount > 0 ? [{
+      id: "field-change",
+      title: "Modifiche dati",
+      value: pendingFieldChangeCount,
+      route: "/admin/candidature?tab=modifiche-dati",
+      icon: <ListChecks className="h-4 w-4" />,
+      trend: "da sbloccare",
+      levelLabel: "Richieste",
+      level: "attention" as const
+    }] : []),
     {
       id: "suppliers",
       title: "Fornitori attivi",

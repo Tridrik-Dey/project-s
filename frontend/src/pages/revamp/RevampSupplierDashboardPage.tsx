@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { ChevronDown, ChevronUp, Download, FileEdit, FileText, Globe, Handshake, Image, LayoutGrid, MapPin, MessageSquare, Star, User, X } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { API_BASE_URL } from "../../api/http";
@@ -16,16 +16,31 @@ import {
   type MyEvaluationAggregate,
 } from "../../api/revampApplicationApi";
 import { saveRevampApplicationIdForRegistry } from "../../utils/revampApplicationSession";
-import { saveRevampIntegrationEditSession } from "../../utils/revampIntegrationEditSession";
+import { consumeRevampIntegrationDrawerReopen, saveRevampIntegrationEditSession } from "../../utils/revampIntegrationEditSession";
+import { completedIntegrationCodes } from "../../utils/revampIntegrationCompletion";
+import { saveRevampFcrEditSession } from "../../utils/revampFcrEditSession";
 import {
   listFieldChangeRequests,
   type FieldChangeRequest,
 } from "../../api/fieldChangeRequestApi";
+import {
+  listDocumentRenewalRequests,
+  submitDocumentRenewalBatch,
+  type DocumentRenewalRequest,
+} from "../../api/documentRenewalRequestApi";
 import { FieldChangeRequestModal } from "../../components/supplier/FieldChangeRequestModal";
+import { getFcrGroup } from "../../config/fcrFieldGroups";
+import { consumeRevampDocumentRenewalDrawerReopen, saveRevampDocumentRenewalEditSession } from "../../utils/revampDocumentRenewalEditSession";
 
 const NAVY  = "#0f2a52";
 const GREEN = "#1a5c3a";
 const MUTED = "#6b7280";
+const ACTIVE_FCR_STATUSES = new Set<FieldChangeRequest["status"]>([
+  "PENDING_ADMIN_REVIEW",
+  "UNLOCKED",
+  "SUBMITTED",
+  "UNDER_REVIEW",
+]);
 
 /* ─── lookup maps ───────────────────────────────────── */
 const FORMA_MAP: Record<string, string> = {
@@ -338,6 +353,7 @@ function SectionCard({ n, title, done, children }: {
 export function RevampSupplierDashboardPage() {
   const { registryType: registryParam } = useParams();
   const { auth, logout } = useAuth();
+  const navigate = useNavigate();
 
   const [loading, setLoading]         = useState(true);
   const [application, setApplication] = useState<RevampApplicationSummary | null>(null);
@@ -351,6 +367,8 @@ export function RevampSupplierDashboardPage() {
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [fieldChangeRequests, setFieldChangeRequests] = useState<FieldChangeRequest[]>([]);
+  const [documentRenewalRequests, setDocumentRenewalRequests] = useState<DocumentRenewalRequest[]>([]);
+  const [renewalDrawerBatch, setRenewalDrawerBatch] = useState<DocumentRenewalRequest[] | null>(null);
   const [showFcrModal, setShowFcrModal] = useState(false);
 
   const isA    = registryParam === "albo-a";
@@ -366,11 +384,12 @@ export function RevampSupplierDashboardPage() {
         const expectedType = isA ? "ALBO_A" : "ALBO_B";
         if (app.registryType !== expectedType) { setLoading(false); return; }
         setApplication(app);
-        const [allSecs, timeline, integrationRequest, fcrs] = await Promise.all([
+        const [allSecs, timeline, integrationRequest, fcrs, renewals] = await Promise.all([
           getRevampApplicationSections(app.id, auth.token!),
           getRevampApplicationCommunications(app.id, auth.token!).catch(() => [] as RevampApplicationCommunication[]),
           getOpenRevampIntegrationRequest(app.id, auth.token!).catch(() => null),
-          listFieldChangeRequests(app.id, auth.token!).catch(() => [] as FieldChangeRequest[])
+          listFieldChangeRequests(app.id, auth.token!).catch(() => [] as FieldChangeRequest[]),
+          listDocumentRenewalRequests(app.id, auth.token!).catch(() => [] as DocumentRenewalRequest[])
         ]);
         if (cancelled) return;
         const byKey: Record<string, RevampSectionSnapshot> = {};
@@ -381,7 +400,20 @@ export function RevampSupplierDashboardPage() {
         setSections(byKey);
         setCommunications(timeline);
         setOpenIntegrationRequest(integrationRequest);
+        if (integrationRequest && consumeRevampIntegrationDrawerReopen(app.id)) {
+          setActiveTab("comunicazioni");
+          setIntegrationDrawerOpen(true);
+        }
         setFieldChangeRequests(fcrs);
+        setDocumentRenewalRequests(renewals);
+        const reopenRenewalBatchId = consumeRevampDocumentRenewalDrawerReopen(app.id);
+        if (reopenRenewalBatchId) {
+          const batch = renewals.filter(item => (item.batchId || item.id) === reopenRenewalBatchId);
+          if (batch.length > 0) {
+            setActiveTab("comunicazioni");
+            setRenewalDrawerBatch(batch);
+          }
+        }
         setLoading(false);
         getMyEvaluationAggregate(auth.token!).then(setEvalAggregate).catch(() => {});
       })
@@ -476,11 +508,15 @@ export function RevampSupplierDashboardPage() {
     ? new Date(application.submittedAt).toLocaleDateString("it-IT") : null;
   const isApproved = status === "APPROVED";
   const isDraft    = status === "DRAFT";
+  const canModifyProfile = isDraft || isApproved;
+  const activeFieldChangeRequest = fieldChangeRequests.find(fcr => ACTIVE_FCR_STATUSES.has(fcr.status));
+  const canRequestFieldChange = canModifyProfile && !activeFieldChangeRequest;
   const hasOpenIntegration = (status === "INTEGRATION_REQUIRED" || status === "WAITING_SUPPLIER_RESPONSE") && Boolean(openIntegrationRequest);
   const integrationDueLabel = openIntegrationRequest?.dueAt
     ? new Date(openIntegrationRequest.dueAt).toLocaleDateString("it-IT")
     : null;
   const requestedItems = parseRequestedItems(openIntegrationRequest?.requestedItemsJson);
+  const completedIntegrationItems = completedIntegrationCodes(openIntegrationRequest?.supplierResponseJson);
   const uploadItems = requestedItems.length > 0
     ? requestedItems
     : [{ code: "GENERAL_DOCUMENT", label: "Documento richiesto", instruction: "" }];
@@ -491,14 +527,62 @@ export function RevampSupplierDashboardPage() {
   const modifySubject = encodeURIComponent(`Richiesta modifica profilo — ${alboLabel} — ${displayName}`);
   const modifyBody    = encodeURIComponent(`Gentile team Solco,\n\nRichiedo la modifica del mio profilo sull'Albo Fornitori.\n\nCodice candidatura: ${proto}\nNome/Ragione sociale: ${displayName}\n\nModifiche richieste:\n[descrivere qui le modifiche]`);
 
+  const activeRenewalBatches = Object.values(
+    documentRenewalRequests
+      .filter(item => item.status === "REMINDER_SENT" || item.status === "EXPIRED_NO_RESPONSE")
+      .reduce<Record<string, DocumentRenewalRequest[]>>((acc, item) => {
+        const key = item.batchId || item.id;
+        acc[key] = [...(acc[key] ?? []), item];
+        return acc;
+      }, {})
+  );
+
   const communicationRows = [
     ...communications.map(item => ({
       date: new Date(item.occurredAt).toLocaleDateString("it-IT"),
       text: item.eventKey === "revamp.application.submitted"
         ? `${item.message} - Codice protocollo: ${proto}`
-        : item.message
+        : item.message,
+      action: null as null | (() => void),
+      actionLabel: null as string | null,
+      meta: null as string | null
     })),
-    { date: new Date().toLocaleDateString("it-IT"), text: `Accesso all'area riservata - ${alboLabel}` }
+    ...activeRenewalBatches
+      .map(batch => {
+        const first = batch[0];
+        const labels = batch.map(item => item.documentLabel).join(", ");
+        const hasExpired = batch.some(item => item.expiredWithoutResponse);
+        return {
+        date: new Date(first.createdAt).toLocaleDateString("it-IT"),
+        text: `${hasExpired ? "Documenti scaduti" : "Rinnovo documenti richiesto"} - ${labels}`,
+        action: () => setRenewalDrawerBatch(batch),
+        actionLabel: "Aggiorna",
+        meta: first.expiryDate ? `Scadenza: ${new Date(first.expiryDate).toLocaleDateString("it-IT")}` : null
+      };
+      }),
+    ...documentRenewalRequests
+      .filter(item => item.status === "APPROVED" || item.status === "REJECTED")
+      .map(item => ({
+        date: new Date(item.updatedAt ?? item.createdAt).toLocaleDateString("it-IT"),
+        text: `Rinnovo documento ${item.status === "APPROVED" ? "approvato" : "respinto"} - ${item.documentLabel}`,
+        action: null as null | (() => void),
+        actionLabel: null as string | null,
+        meta: null as string | null
+      })),
+    ...fieldChangeRequests
+      .filter(fcr => fcr.status === "APPROVED" || fcr.status === "REJECTED")
+      .map(fcr => {
+        const groupLabel = getFcrGroup(fcr.sectionKey)?.label ?? fcr.sectionKey;
+        const outcome = fcr.status === "APPROVED" ? "approvata" : "respinta";
+        return {
+          date: new Date(fcr.updatedAt ?? fcr.submittedAt ?? fcr.createdAt).toLocaleDateString("it-IT"),
+          text: `Modifica dati ${outcome} - ${groupLabel}${fcr.adminNote ? ` - Nota admin: ${fcr.adminNote}` : ""}`,
+          action: null as null | (() => void),
+          actionLabel: null as string | null,
+          meta: null as string | null
+        };
+      }),
+    { date: new Date().toLocaleDateString("it-IT"), text: `Accesso all'area riservata - ${alboLabel}`, action: null, actionLabel: null, meta: null }
   ];
   const openIntegrationRowIndex = hasOpenIntegration
     ? communicationRows.findIndex(row => row.text.toLowerCase().includes("richiesta integrazione"))
@@ -514,6 +598,62 @@ export function RevampSupplierDashboardPage() {
 
   /* ── print handler ── */
   function handlePrint() { window.print(); }
+
+  function handleModifyClick() {
+    if (!canModifyProfile) return;
+    if (activeFieldChangeRequest) {
+      setActiveTab("comunicazioni");
+      return;
+    }
+    if (isDraft) {
+      setShowModal(true);
+      return;
+    }
+    setActiveTab("comunicazioni");
+    setShowFcrModal(true);
+  }
+
+  function targetStepForRenewal(item: DocumentRenewalRequest): number {
+    return item.sectionKey === "S4" ? 4 : 1;
+  }
+
+  function openDocumentRenewalItem(item: DocumentRenewalRequest) {
+    if (!application) return;
+    const registry = application.registryType === "ALBO_B" ? "ALBO_B" : "ALBO_A";
+    saveRevampApplicationIdForRegistry(registry, application.id);
+    saveRevampDocumentRenewalEditSession({
+      renewalRequestId: item.id,
+      renewalRequestIds: [item.id],
+      applicationId: application.id,
+      registryType: registry,
+      targetStep: targetStepForRenewal(item),
+      returnPath: `/supplier/${registryParam}/dashboard/comunicazioni`,
+      batchId: item.batchId,
+      documentType: item.documentType,
+      documentLabel: item.documentLabel,
+      integrationItemCode: item.integrationItemCode,
+      certificationKey: item.certificationKey,
+      documents: [{
+        renewalRequestId: item.id,
+        documentType: item.documentType,
+        documentLabel: item.documentLabel,
+        integrationItemCode: item.integrationItemCode,
+        certificationKey: item.certificationKey
+      }]
+    });
+    setRenewalDrawerBatch(null);
+    navigate(item.sectionKey === "S4" ? `/apply/${registryParam}/step/4` : `/apply/${registryParam}`);
+  }
+
+  async function submitRenewalDrawerBatch() {
+    if (!auth?.token || !application || !renewalDrawerBatch?.length) return;
+    const batchId = renewalDrawerBatch[0]?.batchId;
+    if (!batchId) return;
+    await submitDocumentRenewalBatch(application.id, batchId, auth.token);
+    const renewals = await listDocumentRenewalRequests(application.id, auth.token);
+    setDocumentRenewalRequests(renewals);
+    setRenewalDrawerBatch(null);
+  }
 
   /* ── download handler ── */
   async function handleDownload(fileName: string, storageKey: string) {
@@ -559,19 +699,73 @@ export function RevampSupplierDashboardPage() {
     docsList.push({ label: typeLabel, subLabel: "Sezione 4", fileName: att.fileName, storageKey: att.storageKey, mimeType: att.mimeType ?? "application/octet-stream", sizeBytes: att.sizeBytes ?? 0 });
   }
 
+  function parseAttachmentJson(raw: string | null): Record<string, unknown> | null {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function currentRenewalAttachment(item: DocumentRenewalRequest): Record<string, unknown> | null {
+    if (item.sectionKey === "S1" && item.documentType === "ID_DOCUMENT") {
+      if (isA) {
+        const attachment = s1.profilePhotoAttachment;
+        return attachment && typeof attachment === "object" && !Array.isArray(attachment) ? attachment as Record<string, unknown> : null;
+      }
+      const representative = s1.legalRepresentative;
+      const nested = representative && typeof representative === "object" && !Array.isArray(representative)
+        ? (representative as Record<string, unknown>).idDocumentAttachment
+        : null;
+      const legacy = s1.lrCartaIdentita;
+      const attachment = nested ?? legacy;
+      return attachment && typeof attachment === "object" && !Array.isArray(attachment) ? attachment as Record<string, unknown> : null;
+    }
+    if (item.sectionKey !== "S4") return null;
+    const attachments = Array.isArray(s4.attachments) ? s4.attachments as Record<string, unknown>[] : [];
+    return attachments.find(att => {
+      if (att.documentType !== item.documentType) return false;
+      const certKey = typeof att.certificationKey === "string" ? att.certificationKey : "";
+      return item.certificationKey ? certKey === item.certificationKey : !certKey;
+    }) ?? null;
+  }
+
+  function isRenewalDocumentUpdated(item: DocumentRenewalRequest): boolean {
+    if (item.status === "SUBMITTED" || item.status === "UNDER_REVIEW" || item.status === "APPROVED") return true;
+    const current = currentRenewalAttachment(item);
+    if (!current) return false;
+    const oldAttachment = parseAttachmentJson(item.oldAttachmentJson);
+    const currentKey = typeof current.storageKey === "string" ? current.storageKey : "";
+    const oldKey = typeof oldAttachment?.storageKey === "string" ? oldAttachment.storageKey : "";
+    return Boolean(currentKey && currentKey !== oldKey);
+  }
+
   function openIntegrationDrawer() {
     if (!hasOpenIntegration) return;
     setIntegrationDrawerOpen(true);
   }
 
-  function rememberIntegrationEdit(step: number) {
+  function rememberIntegrationEdit(step: number, selectedItem?: RequestedItem) {
     if (!application) return;
+    const itemsForSession = selectedItem
+      ? [selectedItem]
+      : requestedItems.filter((item) => targetStepForItem(item) === step);
     saveRevampApplicationIdForRegistry(application.registryType, application.id);
     saveRevampIntegrationEditSession({
       applicationId: application.id,
       registryType: application.registryType,
       targetStep: step,
-      returnPath: `/apply/${registryParam}/my-profile`
+      returnPath: `/apply/${registryParam}/my-profile`,
+      requestedItems: itemsForSession
+        .map((item) => ({
+          code: item.code,
+          label: item.label,
+          documentType: item.documentType,
+          certificationKey: item.certificationKey,
+          targetStep: targetStepForItem(item)
+        }))
     });
     setIntegrationDrawerOpen(false);
   }
@@ -689,20 +883,25 @@ export function RevampSupplierDashboardPage() {
                   {uploadItems.map(item => {
                     const step = targetStepForItem(item);
                     const sectionName = sectionNameForStep(application.registryType, step);
+                    const isCompleted = completedIntegrationItems.has(item.code.trim().toUpperCase());
                     return (
-                      <div key={`${item.code}-${item.label}`} className="supplier-integration-drawer-item">
+                      <div key={`${item.code}-${item.label}`} className={`supplier-integration-drawer-item${isCompleted ? " is-completed" : ""}`}>
                         <div className="supplier-integration-drawer-item-main">
                           <span className="supplier-integration-drawer-item-label">Elemento richiesto</span>
                           <strong>{item.label}</strong>
                           <p>{item.instruction || "Aggiorna questa parte della candidatura."}</p>
                         </div>
-                        <Link
-                          className="supplier-integration-drawer-edit"
-                          to={wizardStepPath(registryParam, step)}
-                          onClick={() => rememberIntegrationEdit(step)}
-                        >
-                          Apri sezione {step} - {sectionName}
-                        </Link>
+                        {isCompleted ? (
+                          <span className="supplier-integration-drawer-edit is-disabled">Completato</span>
+                        ) : (
+                          <Link
+                            className="supplier-integration-drawer-edit"
+                            to={wizardStepPath(registryParam, step)}
+                            onClick={() => rememberIntegrationEdit(step, item)}
+                          >
+                            Apri sezione {step} - {sectionName}
+                          </Link>
+                        )}
                       </div>
                     );
                   })}
@@ -723,6 +922,73 @@ export function RevampSupplierDashboardPage() {
       ) : null}
 
       {/* ── Top bar ── */}
+      {renewalDrawerBatch && application ? (
+        <div className="supplier-integration-drawer-overlay" onClick={() => setRenewalDrawerBatch(null)}>
+          <aside className="supplier-integration-drawer" onClick={event => event.stopPropagation()}>
+            <div className="supplier-integration-drawer-head">
+              <div>
+                <span className="supplier-integration-drawer-kicker">Comunicazioni</span>
+                <h2>Rinnovo documenti</h2>
+                <p>Aggiorna i documenti richiesti e inviali in revisione.</p>
+                <div className="supplier-integration-drawer-intro">
+                  Apri un documento alla volta. Dopo il salvataggio tornerai qui e potrai completare gli altri documenti dello stesso lotto.
+                </div>
+              </div>
+              <button type="button" className="supplier-integration-drawer-close" onClick={() => setRenewalDrawerBatch(null)} aria-label="Chiudi">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="supplier-integration-drawer-body">
+              <section className="supplier-integration-drawer-section">
+                <h3>Documenti richiesti</h3>
+                <div className="supplier-integration-drawer-items">
+                  {renewalDrawerBatch.map(item => {
+                    const isUpdated = isRenewalDocumentUpdated(item);
+                    const step = targetStepForRenewal(item);
+                    const sectionName = sectionNameForStep(application.registryType, step);
+                    return (
+                      <div key={item.id} className={`supplier-integration-drawer-item${isUpdated ? " is-completed" : ""}`}>
+                        <div className="supplier-integration-drawer-item-main">
+                          <span className="supplier-integration-drawer-item-label">
+                            {item.expiryDate ? `Scadenza: ${new Date(item.expiryDate).toLocaleDateString("it-IT")}` : "Documento richiesto"}
+                          </span>
+                          <strong>{item.documentLabel}</strong>
+                          <p>{isUpdated ? "Documento aggiornato pronto per l'invio." : `Aggiorna nella sezione ${step} - ${sectionName}.`}</p>
+                        </div>
+                        {isUpdated ? (
+                          <span className="supplier-integration-drawer-edit is-disabled">Completato</span>
+                        ) : (
+                          <button type="button" className="supplier-integration-drawer-edit" onClick={() => openDocumentRenewalItem(item)}>
+                            Aggiorna
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+
+            <div className="supplier-integration-drawer-foot">
+              <div className="supplier-integration-drawer-foot-note">
+                {renewalDrawerBatch.every(isRenewalDocumentUpdated)
+                  ? "Tutti i documenti sono pronti. Puoi inviarli in revisione."
+                  : "Completa tutti i documenti richiesti prima dell'invio."}
+              </div>
+              <button
+                type="button"
+                className="supplier-integration-drawer-edit"
+                disabled={!renewalDrawerBatch.every(isRenewalDocumentUpdated)}
+                onClick={() => void submitRenewalDrawerBatch()}
+              >
+                Invia documenti in revisione
+              </button>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
       <div style={{ background: "linear-gradient(120deg, #0b3f73 0%, #1b5d96 52%, #0c467f 100%)", borderBottom: "1px solid rgba(206,226,248,0.24)", display: "flex", alignItems: "center", padding: "0 32px", minHeight: 64 }}>
         {/* Brand */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
@@ -939,7 +1205,15 @@ export function RevampSupplierDashboardPage() {
               </div>
 
               <div className="supplier-identity-actions">
-                <button type="button" onClick={() => setShowModal(true)}
+                <button type="button" onClick={handleModifyClick}
+                  disabled={!canRequestFieldChange}
+                  title={
+                    !canModifyProfile
+                      ? "Puoi richiedere modifiche solo dopo la risposta alla revisione, quando il profilo sara attivo."
+                      : activeFieldChangeRequest
+                        ? "Hai gia una richiesta di modifica dati in corso. Apri Comunicazioni per seguirla."
+                        : undefined
+                  }
                   className="supplier-identity-action is-primary">
                   <MessageSquare size={12} /> {isDraft ? "Continua" : "Modifica"}
                 </button>
@@ -1396,7 +1670,13 @@ export function RevampSupplierDashboardPage() {
                 type="button"
                 className="home-btn home-btn-primary admin-action-btn"
                 style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem" }}
-                onClick={() => setShowFcrModal(true)}
+                disabled={!canRequestFieldChange}
+                title={
+                  activeFieldChangeRequest
+                    ? "Hai gia una richiesta di modifica dati in corso. Attendi la risposta o completa quella richiesta."
+                    : undefined
+                }
+                onClick={handleModifyClick}
               >
                 <FileEdit size={15} />
                 Richiesta Modifica Dati
@@ -1445,11 +1725,20 @@ export function RevampSupplierDashboardPage() {
                             type="button"
                             className="supplier-communication-row-btn"
                             onClick={() => {
-                              const step = { S1: 1, S2: 2, S3: 3, S4: 4, S5: 5 }[fcr.sectionKey] ?? 1;
-                              window.location.href = `/revamp/${application.registryType === "ALBO_B" ? "albo-b" : "albo-a"}/step-${step}`;
+                              const group = getFcrGroup(fcr.sectionKey);
+                              const step = group?.step ?? 1;
+                              const registryPath = application.registryType === "ALBO_B" ? "albo-b" : "albo-a";
+                              const dest = step === 1 ? `/apply/${registryPath}` : `/apply/${registryPath}/step/${step}`;
+                              saveRevampFcrEditSession({
+                                fcrId: fcr.id,
+                                applicationId: application.id,
+                                sectionKey: fcr.sectionKey,
+                                returnPath: "/supplier/dashboard",
+                              });
+                              navigate(dest);
                             }}
                           >
-                            Aggiorna Sezione {fcr.sectionKey}
+                            Aggiorna: {getFcrGroup(fcr.sectionKey)?.label ?? fcr.sectionKey}
                           </button>
                         </span>
                       )}
@@ -1472,8 +1761,9 @@ export function RevampSupplierDashboardPage() {
             </div>
             {communicationRows.map((msg, i) => {
               const isOpenIntegrationRow = hasOpenIntegration && application && i === openIntegrationRowIndex;
+              const isActionableRow = isOpenIntegrationRow || Boolean(msg.action);
               return (
-              <div key={i} className={`supplier-communication-row${isOpenIntegrationRow ? " is-actionable" : ""}`}>
+              <div key={i} className={`supplier-communication-row${isActionableRow ? " is-actionable" : ""}`}>
                 <div className="supplier-communication-marker" />
                 <span className="supplier-communication-date">{msg.date}</span>
                 <span className="supplier-communication-text">
@@ -1486,6 +1776,14 @@ export function RevampSupplierDashboardPage() {
                       </button>
                     </span>
                   ) : null}
+                  {!isOpenIntegrationRow && msg.action ? (
+                    <span className="supplier-communication-action-meta">
+                      {msg.meta ? <span>{msg.meta}</span> : null}
+                      <button type="button" className="supplier-communication-row-btn" onClick={msg.action}>
+                        {msg.actionLabel ?? "Apri"}
+                      </button>
+                    </span>
+                  ) : null}
                 </span>
               </div>
               );
@@ -1495,9 +1793,10 @@ export function RevampSupplierDashboardPage() {
       )}
 
       {/* ── FCR Modal ── */}
-      {showFcrModal && application && (
+      {showFcrModal && application && auth && (
         <FieldChangeRequestModal
           applicationId={application.id}
+          registryType={application.registryType === "ALBO_B" ? "ALBO_B" : "ALBO_A"}
           token={auth.token!}
           onClose={() => setShowFcrModal(false)}
           onSent={() => {

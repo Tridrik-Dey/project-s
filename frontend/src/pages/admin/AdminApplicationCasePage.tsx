@@ -61,6 +61,26 @@ function sectionLabel(sectionKey: string): string {
   return sectionKey;
 }
 
+function fieldChangeGroupLabel(sectionKey: string | null | undefined): string {
+  const normalized = (sectionKey ?? "").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    ateco_b: "Codici ATECO",
+    ateco: "Codici ATECO",
+    dimensione: "Dimensione aziendale",
+    regioni_op: "Regioni operative",
+    acc_formazione: "Accreditamento formazione",
+    terzo_settore: "Terzo settore",
+    tipo_prof: "Tipologia professionale",
+    comp_secondarie: "Competenze secondarie",
+    dati_personali: "Dati personali",
+    dati_fiscali: "Dati fiscali",
+    indirizzo: "Indirizzo",
+    contatti: "Contatti",
+    foto_profilo: "Foto profilo"
+  };
+  return labels[normalized] ?? sectionLabel(sectionKey ?? "Modifica dati");
+}
+
 function appShortCode(applicationId: string): string {
   return `A-${applicationId.slice(0, 8).toUpperCase()}`;
 }
@@ -94,6 +114,65 @@ function toScalar(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return "";
+}
+
+function comparisonValue(payload: SectionPayload | null, key: string): string {
+  if (!payload) return "";
+  const value = payload[key];
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (typeof item === "string" || typeof item === "number") return String(item);
+      if (item && typeof item === "object") {
+        const objectValue = item as Record<string, unknown>;
+        return toScalar(objectValue.code) || toScalar(objectValue.region) || toScalar(objectValue.value);
+      }
+      return "";
+    }).filter(Boolean).join(", ");
+  }
+  return toScalar(value);
+}
+
+function comparisonValueAny(payload: SectionPayload | null, keys: string[]): string {
+  for (const key of keys) {
+    const direct = comparisonValue(payload, key);
+    if (direct) return direct;
+  }
+  return "";
+}
+
+function fieldChangeComparisonRows(fcr: AdminReviewCaseSummary | null): Array<{ label: string; before: string; after: string }> {
+  if (!fcr || fcr.reviewType !== "FIELD_CHANGE") return [];
+  const before = parsePayload(fcr.fieldChangeBeforeValueJson ?? undefined);
+  const after = parsePayload(fcr.fieldChangeAfterValueJson ?? undefined);
+  const normalized = (fcr.fieldChangeSectionKey ?? "").toLowerCase();
+  const keysByGroup: Record<string, Array<{ keys: string[]; label: string }>> = {
+    ateco_b: [
+      { keys: ["atecoPrimary", "atecoMain", "ateco", "atecoCode"], label: "ATECO principale" },
+      { keys: ["atecoSecondary", "atecoSecondari"], label: "ATECO secondari" }
+    ],
+    ateco: [
+      { keys: ["atecoPrimary", "atecoMain", "ateco", "atecoCode"], label: "ATECO principale" },
+      { keys: ["atecoSecondary", "atecoSecondari"], label: "ATECO secondari" }
+    ],
+    dimensione: [
+      { keys: ["employeeRange", "dipendenti"], label: "Numero dipendenti" },
+      { keys: ["revenueBand", "fatturato"], label: "Fatturato" }
+    ],
+    regioni_op: [
+      { keys: ["operatingRegions"], label: "Regioni operative" }
+    ],
+    tipo_prof: [
+      { keys: ["professionalType"], label: "Tipologia professionale" }
+    ]
+  };
+  const keys = keysByGroup[normalized] ?? Object.keys(after ?? before ?? {}).map((key) => ({ keys: [key], label: key }));
+  return keys
+    .map(({ keys, label }) => ({
+      label,
+      before: comparisonValueAny(before, keys) || "n/d",
+      after: comparisonValueAny(after, keys) || "n/d"
+    }))
+    .filter((row) => row.before !== row.after);
 }
 
 function findUrl(value: unknown): string | null {
@@ -397,8 +476,28 @@ export function AdminApplicationCasePage() {
       .map(mapAuditToTimelineEvent)
       .filter((event): event is ReviewTimelineEvent => Boolean(event))
       .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+    const fieldChangeEvents = reviewHistory
+      .filter((item) => item.reviewType === "FIELD_CHANGE")
+      .map((item) => ({
+        id: `fcr-${item.id}`,
+        title: item.decision
+          ? "Decisione modifica dati"
+          : item.status === "PENDING_ASSIGNMENT"
+            ? "Modifica inviata dal fornitore"
+            : "Revisione modifica dati",
+        badge: item.decision === "APPROVED"
+          ? "Modifica approvata"
+          : item.decision === "REJECTED"
+            ? "Modifica respinta"
+            : "Modifica dati",
+        tone: item.decision === "REJECTED" ? "danger" : item.decision === "APPROVED" ? "ok" : "warn",
+        detail: fieldChangeGroupLabel(item.fieldChangeSectionKey),
+        occurredAt: item.updatedAt
+      }) satisfies ReviewTimelineEvent);
 
-    if (events.length > 0) return events;
+    if (events.length > 0) {
+      return [...events, ...fieldChangeEvents].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+    }
 
     const fallback: ReviewTimelineEvent[] = [];
     if (summary?.submittedAt) {
@@ -424,7 +523,7 @@ export function AdminApplicationCasePage() {
           occurredAt: item.updatedAt
         });
       });
-    return fallback;
+    return [...fallback, ...fieldChangeEvents].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
   }, [auditEvents, reviewHistory, summary?.protocolCode, summary?.submittedAt]);
   const historyRows = useMemo(() => {
     const rows: ReviewTimelineEvent[][] = [];
@@ -439,19 +538,24 @@ export function AdminApplicationCasePage() {
   const s1Payload = useMemo(() => getSectionPayload(sections, "S1"), [sections]);
   const s2Payload = useMemo(() => getSectionPayload(sections, "S2"), [sections]);
   const s4Payload = useMemo(() => getSectionPayload(sections, "S4"), [sections]);
+  const isFieldChangeReview = latestCase?.reviewType === "FIELD_CHANGE";
+  const isDocumentRenewalReview = latestCase?.reviewType === "DOCUMENT_RENEWAL";
   const canFinalize = canFinalizeDecision(adminRole);
-  const canRequestIntegration = canRequestIntegrationDecision(adminRole);
+  const canRequestIntegration = !isFieldChangeReview && !isDocumentRenewalReview && canRequestIntegrationDecision(adminRole);
   const reviewReadOnly = auth?.role === "ADMIN" && adminRole === "VIEWER";
-  const canVerify = adminRole === "SUPER_ADMIN" || adminRole === "RESPONSABILE_ALBO" || adminRole === "REVISORE";
-  const isFinalized = latestCase?.status === "DECIDED" || summary?.status === "APPROVED" || summary?.status === "REJECTED";
+  const canVerify = !isFieldChangeReview && (adminRole === "SUPER_ADMIN" || adminRole === "RESPONSABILE_ALBO" || adminRole === "REVISORE");
+  const isFinalized = latestCase?.status === "DECIDED"
+    || (!isDocumentRenewalReview && (summary?.status === "APPROVED" || summary?.status === "REJECTED"));
   const hasOpenIntegrationRequest = latestIntegrationRequest?.status === "OPEN";
   const awaitingSupplierResponse = latestCase?.status === "WAITING_SUPPLIER_RESPONSE" || hasOpenIntegrationRequest;
   const notYetVerified = !latestCase?.verifiedAt;
   const notYetAssigned = latestCase?.status === "PENDING_ASSIGNMENT";
-  const finalDecisionLocked = isFinalized || awaitingSupplierResponse || notYetVerified || notYetAssigned;
+  const finalDecisionLocked = isFinalized || awaitingSupplierResponse || (!isFieldChangeReview && notYetVerified) || notYetAssigned;
   const assignedToOther = Boolean(latestCase?.assignedToUserId && auth?.userId && latestCase.assignedToUserId !== auth.userId);
   const assignmentLocked = assignedToOther && adminRole !== "SUPER_ADMIN";
   const isAlboB = summary?.registryType === "ALBO_B";
+  const fieldChangeLabel = fieldChangeGroupLabel(latestCase?.fieldChangeSectionKey);
+  const fieldChangeRows = useMemo(() => fieldChangeComparisonRows(latestCase), [latestCase]);
 
   const candidateHeaderTitle = useMemo(() => {
     if (!summary) return "Candidatura";
@@ -662,8 +766,10 @@ export function AdminApplicationCasePage() {
             {isAlboB ? "Albo Aziende" : "Albo Professionisti"}
           </span>
           <span className={`review-sticky-status tone-${statusToneOf(summary?.status)}`}>
-            {statusLabelOf(summary?.status)}
+            {isDocumentRenewalReview ? "Rinnovo documenti in revisione" : isFieldChangeReview ? "Modifica dati in revisione" : statusLabelOf(summary?.status)}
           </span>
+          {isFieldChangeReview ? <span className="queue-pill urgency response-received">Modifica dati</span> : null}
+          {isDocumentRenewalReview ? <span className="queue-pill urgency response-received">Rinnovo documenti</span> : null}
         </div>
         {isUrgent ? <span className="review-urgent-pill"><AlertTriangle size={13} /> Urgente</span> : null}
         <button type="button" className="review-refresh-btn" onClick={() => void loadCase()} disabled={loading}>
@@ -679,7 +785,7 @@ export function AdminApplicationCasePage() {
           <div className="review-hero-body">
             <h3 className="review-hero-name">{candidateHeaderTitle}</h3>
             <p className="review-hero-type">
-              {isAlboB ? "Azienda fornitrice" : "Professionista"} &nbsp;·&nbsp;
+              {isFieldChangeReview ? `Richiesta modifica dati - ${fieldChangeLabel}` : (isAlboB ? "Azienda fornitrice" : "Professionista")} &nbsp;·&nbsp;
               {isAlboB ? "Albo Fornitori Aziende" : "Albo Fornitori Professionisti"}
             </p>
             <div className="review-hero-meta-grid">
@@ -754,6 +860,31 @@ export function AdminApplicationCasePage() {
               <div className="panel review-loading-panel"><p className="subtle">Caricamento profilo in corso…</p></div>
             ) : (
               <>
+                {isFieldChangeReview ? (
+                  <div className="panel review-docs-panel">
+                    <div className="review-side-panel-head">
+                      <h4><Info size={15} /> Modifica dati richiesta</h4>
+                      <span className="review-side-count">{fieldChangeLabel}</span>
+                    </div>
+                    <p className="subtle">Il profilo Albo continua a mostrare i valori approvati. Questi sono i valori proposti dal fornitore per la revisione.</p>
+                    {fieldChangeRows.length > 0 ? (
+                      <div className="profile-history-list">
+                        {fieldChangeRows.map((row) => (
+                          <article key={row.label} className="admin-profile-history-item">
+                            <div className="history-event-header">
+                              <strong className="history-event-key">{row.label}</strong>
+                              <span className="comm-status-badge badge-neutral">Prima / Dopo</span>
+                            </div>
+                            <p className="subtle">Prima: <strong>{row.before}</strong></p>
+                            <p className="subtle">Proposto: <strong>{row.after}</strong></p>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="subtle">Confronto disponibile nei dati tecnici della richiesta di modifica.</p>
+                    )}
+                  </div>
+                ) : null}
                 <SupplierProfileView isAlboB={isAlboB} sections={sections} />
                 <div className="panel review-docs-panel">
                   <div className="review-side-panel-head">
@@ -844,7 +975,7 @@ export function AdminApplicationCasePage() {
             <div className="panel review-decision-panel">
               <div className="review-decision-header">
                 <ClipboardList size={16} />
-                <h4>Decisione sulla candidatura</h4>
+                <h4>{isFieldChangeReview ? "Decisione sulla modifica" : "Decisione sulla candidatura"}</h4>
                 {reviewReadOnly ? <span className="review-viewer-badge">Solo lettura</span> : null}
               </div>
 
@@ -885,21 +1016,23 @@ export function AdminApplicationCasePage() {
               ) : null}
 
               {/* Completeness checklist */}
-              <div className="review-checklist-mini">
-                {checklistRows.map((row) => (
-                  <div key={row.label} className={`review-check-row ${row.done ? "check-done" : "check-missing"}`}>
-                    {row.done ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-                    <span>{row.label}</span>
-                  </div>
-                ))}
-                <div className="review-section-tags">
-                  {sections.map((s) => (
-                    <span key={s.id} className={s.completed ? "section-chip done" : "section-chip pending"}>
-                      {sectionLabel(s.sectionKey)}
-                    </span>
+              {!isFieldChangeReview ? (
+                <div className="review-checklist-mini">
+                  {checklistRows.map((row) => (
+                    <div key={row.label} className={`review-check-row ${row.done ? "check-done" : "check-missing"}`}>
+                      {row.done ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                      <span>{row.label}</span>
+                    </div>
                   ))}
+                  <div className="review-section-tags">
+                    {sections.map((s) => (
+                      <span key={s.id} className={s.completed ? "section-chip done" : "section-chip pending"}>
+                        {sectionLabel(s.sectionKey)}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
               {/* Verify action */}
               {!isFinalized && !awaitingSupplierResponse && !notYetAssigned && !assignmentLocked && canVerify && latestCase && !latestCase.verifiedAt ? (
@@ -914,9 +1047,9 @@ export function AdminApplicationCasePage() {
               {canFinalize ? (
                 <div className="review-decision-block review-approve-block">
                   <div className="review-decision-block-head">
-                    <CheckCircle2 size={15} /><strong>Approva iscrizione</strong>
+                    <CheckCircle2 size={15} /><strong>{isFieldChangeReview ? "Approva modifica" : "Approva iscrizione"}</strong>
                   </div>
-                  <p className="review-decision-hint">Il fornitore verrà iscritto all'albo e potrà operare da subito.</p>
+                  <p className="review-decision-hint">{isFieldChangeReview ? "La modifica diventerà il nuovo valore approvato del profilo Albo." : "Il fornitore verrà iscritto all'albo e potrà operare da subito."}</p>
                   <label className="review-compact-label">Nota (opzionale)</label>
                   <textarea className="review-compact-textarea" rows={2} value={approveReason} maxLength={DECISION_REASON_MAX}
                     onChange={(e) => setApproveReason(e.target.value)} placeholder="Aggiungi una nota opzionale…"
@@ -924,7 +1057,7 @@ export function AdminApplicationCasePage() {
                   <button type="button" className="review-btn-approve"
                     onClick={() => void submitDecision("APPROVED", approveReason)}
                     disabled={!latestCase || busyAction !== null || finalDecisionLocked || assignmentLocked}>
-                    {busyAction === "APPROVED" ? "Approvazione in corso…" : "✓  Approva"}
+                    {busyAction === "APPROVED" ? "Approvazione in corso..." : (isFieldChangeReview ? "Approva modifica" : "Approva")}
                   </button>
                 </div>
               ) : null}
@@ -950,9 +1083,9 @@ export function AdminApplicationCasePage() {
               {canFinalize ? (
                 <div className="review-decision-block review-reject-block">
                   <div className="review-decision-block-head">
-                    <XCircle size={15} /><strong>Rifiuta candidatura</strong>
+                    <XCircle size={15} /><strong>{isFieldChangeReview ? "Respingi modifica" : "Rifiuta candidatura"}</strong>
                   </div>
-                  <p className="review-decision-hint">La candidatura sarà chiusa. Il fornitore riceverà notifica del rifiuto.</p>
+                  <p className="review-decision-hint">{isFieldChangeReview ? "Il valore precedente resterà attivo sul profilo Albo." : "La candidatura sarà chiusa. Il fornitore riceverà notifica del rifiuto."}</p>
                   <label className="review-compact-label">Motivo del rifiuto <span className="review-required-star">*</span></label>
                   <textarea className="review-compact-textarea" rows={2} value={rejectReason} maxLength={DECISION_REASON_MAX}
                     onChange={(e) => setRejectReason(e.target.value)} placeholder="Descrivi il motivo del rifiuto…"
@@ -963,7 +1096,7 @@ export function AdminApplicationCasePage() {
                   <button type="button" className="review-btn-reject"
                     onClick={() => setShowRejectConfirmModal(true)}
                     disabled={!latestCase || busyAction !== null || finalDecisionLocked || assignmentLocked || !rejectReason.trim()}>
-                    {busyAction === "REJECTED" ? "Chiusura in corso…" : "✕  Rifiuta candidatura"}
+                    {busyAction === "REJECTED" ? "Chiusura in corso..." : (isFieldChangeReview ? "Respingi modifica" : "Rifiuta candidatura")}
                   </button>
                 </div>
               ) : null}
@@ -1142,4 +1275,3 @@ export function AdminApplicationCasePage() {
     </AdminCandidatureShell>
   );
 }
-

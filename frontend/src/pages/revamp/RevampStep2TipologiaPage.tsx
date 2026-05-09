@@ -2,9 +2,13 @@ import { ChangeEvent, useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, CheckCircle, Save } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
-import { answerRevampIntegrationRequest, getMyLatestRevampApplication, getRevampApplicationSections, saveRevampApplicationSection } from "../../api/revampApplicationApi";
+import { getMyLatestRevampApplication, getRevampApplicationSections, saveRevampApplicationSection } from "../../api/revampApplicationApi";
 import { loadRevampApplicationIdForRegistry, saveRevampApplicationIdForRegistry } from "../../utils/revampApplicationSession";
 import { clearRevampIntegrationEditSession, isRevampIntegrationEditFor } from "../../utils/revampIntegrationEditSession";
+import { completeRevampIntegrationEdit } from "../../utils/revampIntegrationCompletion";
+import { loadRevampFcrEditSession } from "../../utils/revampFcrEditSession";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
 
 /* ─── colours ─────────────────────────────────── */
 const NAVY  = "#0f2a52";
@@ -155,14 +159,14 @@ function PageHeader({ title, subtitle, badge, onSave }: { title: string; subtitl
 }
 
 /* ─── main card ────────────────────────────────── */
-function TypeCard({ card, selected, onClick, accent }: { card: CardDef; selected: boolean; onClick: () => void; accent: string }) {
+function TypeCard({ card, selected, onClick, accent, disabled = false }: { card: CardDef; selected: boolean; onClick: () => void; accent: string; disabled?: boolean }) {
   return (
     <div
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
       style={{
         background: selected ? `${accent}08` : "#fff",
         border: `1.5px solid ${selected ? accent : "#e5e7eb"}`,
-        borderRadius: 8, padding: "14px 12px", cursor: "pointer",
+        borderRadius: 8, padding: "14px 12px", cursor: disabled ? "default" : "pointer",
         transition: "border-color .15s, background .15s",
         display: "flex", flexDirection: "column", gap: 7, minHeight: 110
       }}
@@ -192,12 +196,13 @@ function TypeCard({ card, selected, onClick, accent }: { card: CardDef; selected
 }
 
 /* ─── secondary role checkbox ──────────────────── */
-function SecondaryCheck({ card, checked, onChange, accent }: { card: CardDef; checked: boolean; onChange: (e: ChangeEvent<HTMLInputElement>) => void; accent: string }) {
+function SecondaryCheck({ card, checked, onChange, accent, disabled = false }: { card: CardDef; checked: boolean; onChange: (e: ChangeEvent<HTMLInputElement>) => void; accent: string; disabled?: boolean }) {
   return (
-    <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", padding: "8px 10px", borderRadius: 6, background: checked ? `${accent}06` : "#fff", border: `1px solid ${checked ? accent : "#e5e7eb"}`, transition: "background .12s, border-color .12s" }}>
+    <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: disabled ? "default" : "pointer", padding: "8px 10px", borderRadius: 6, background: checked ? `${accent}06` : "#fff", border: `1px solid ${checked ? accent : "#e5e7eb"}`, transition: "background .12s, border-color .12s" }}>
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={onChange}
         style={{ marginTop: 2, accentColor: accent, flexShrink: 0 }}
       />
@@ -226,6 +231,7 @@ export function RevampStep2TipologiaPage() {
   const cards  = isA ? CARDS_A : CARDS_B;
   const registryType = isA ? "ALBO_A" : "ALBO_B";
   const integrationEdit = isRevampIntegrationEditFor(registryType, 2);
+  const fcr = useFcrEditMode();
 
   const [selected,       setSelected]       = useState<string | null>(null);
   const [secondaryRoles, setSecondaryRoles] = useState<Set<string>>(new Set());
@@ -249,7 +255,8 @@ export function RevampStep2TipologiaPage() {
       else if (s2.ateco)               setAtecoQuery(s2.ateco as string);
     }
 
-    const existingAppId = loadRevampApplicationIdForRegistry(registryType);
+    const fcrSession = loadRevampFcrEditSession();
+    const existingAppId = fcrSession?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
     if (existingAppId) {
       getRevampApplicationSections(existingAppId, auth.token).then(applyS2).catch(() => {});
       return;
@@ -270,7 +277,7 @@ export function RevampStep2TipologiaPage() {
   async function handleSaveDraft() {
     if (!auth?.token) return;
     try {
-      const appId = loadRevampApplicationIdForRegistry(registryType);
+      const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
       if (!appId) return;
       const professionalType = professionalTypeForTipologia(selected);
       const secondaryProfessionalTypes = professionalTypesForTipologie(secondaryRoles);
@@ -283,6 +290,21 @@ export function RevampStep2TipologiaPage() {
       }), false, auth.token);
       handleSave();
     } catch { /* best-effort */ }
+  }
+
+  async function saveSectionProgrammatic() {
+    if (!auth?.token) return;
+    const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
+    if (!appId) throw new Error("Candidatura non trovata.");
+    const professionalType = professionalTypeForTipologia(selected);
+    const secondaryProfessionalTypes = professionalTypesForTipologie(secondaryRoles);
+    await saveRevampApplicationSection(appId, "S2", JSON.stringify({
+      tipologia: selected ?? "",
+      professionalType,
+      multiRuoli: Array.from(secondaryRoles),
+      secondaryProfessionalTypes,
+      atecoCode: atecoQuery,
+    }), true, auth.token);
   }
 
   function toggleSecondary(id: string) {
@@ -307,7 +329,7 @@ export function RevampStep2TipologiaPage() {
     let savedAppId: string | null = null;
     if (auth?.token) {
       try {
-        const appId = loadRevampApplicationIdForRegistry(registryType);
+          const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
         if (appId) {
           savedAppId = appId;
           const professionalType = professionalTypeForTipologia(selected);
@@ -327,7 +349,7 @@ export function RevampStep2TipologiaPage() {
     }
     if (integrationEdit && auth?.token && savedAppId) {
       try {
-        await answerRevampIntegrationRequest(savedAppId, auth.token);
+        await completeRevampIntegrationEdit(savedAppId, auth.token, integrationEdit);
         clearRevampIntegrationEditSession();
       } catch {
         window.alert("Invio integrazione non riuscito. Controlla i dati e riprova.");
@@ -350,9 +372,9 @@ export function RevampStep2TipologiaPage() {
         badge={savedAt ? `Bozza salvata ${savedAt}` : "Salva bozza"}
         onSave={() => void handleSaveDraft()}
       />
-      {integrationEdit ? (
+      {integrationEdit || fcr.active ? (
         <div style={{ background: "#eff6ff", borderBottom: "1px solid #bfdbfe", padding: "12px 40px", color: "#174f82", fontSize: "0.86rem", fontWeight: 700 }}>
-          Integrazione richiesta - Correggi la sezione Tipologia, salva e invia la risposta.
+          {fcr.active ? "Richiesta di modifica - Aggiorna solo il gruppo sbloccato, poi salva e invia." : "Integrazione richiesta - Correggi la sezione Tipologia, salva e invia la risposta."}
         </div>
       ) : (
         <StepBar active={1} accent={accent} />
@@ -362,7 +384,7 @@ export function RevampStep2TipologiaPage() {
       <div style={{ maxWidth: 1120, margin: "24px auto", padding: "0 24px 100px" }}>
 
         {/* ── Card: Tipologia principale ── */}
-        <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", marginBottom: 20 }}>
+        <div className={fcr.active ? (fcr.isLocked("tipo_prof") ? "fcr-locked" : "fcr-active-group") : undefined} style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", marginBottom: 20 }}>
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
             <div>
@@ -388,6 +410,7 @@ export function RevampStep2TipologiaPage() {
                   setSecondaryRoles(prev => { const n = new Set(prev); n.delete(card.id); return n; });
                 }}
                 accent={accent}
+                disabled={fcr.active && fcr.isLocked("tipo_prof")}
               />
             ))}
           </div>
@@ -408,7 +431,7 @@ export function RevampStep2TipologiaPage() {
 
         {/* ── Card: Codice ATECO (only when "Altro") ── */}
         {isAltro ? (
-          <div style={{ background: "#fff", borderRadius: 10, border: `1px solid ${atecoError ? "#fca5a5" : "#e5e7eb"}`, padding: "22px 28px", marginBottom: 20 }}>
+          <div className={fcr.active ? (fcr.isLocked("ateco") ? "fcr-locked" : "fcr-active-group") : undefined} style={{ background: "#fff", borderRadius: 10, border: `1px solid ${atecoError ? "#fca5a5" : "#e5e7eb"}`, padding: "22px 28px", marginBottom: 20 }}>
             <div style={{ fontWeight: 700, fontSize: "1rem", color: "#1e293b", marginBottom: 4 }}>
               Codice ATECO principale <span style={{ color: "#dc2626" }}>*</span>
             </div>
@@ -418,6 +441,7 @@ export function RevampStep2TipologiaPage() {
             <input
               type="text"
               value={atecoQuery}
+              disabled={fcr.active && fcr.isLocked("ateco")}
               onChange={e => { setAtecoQuery(e.target.value); if (atecoError) setAtecoError(false); }}
               placeholder="Es. 85.59 — Corsi tenuti da docenti indipendenti..."
               style={{
@@ -437,7 +461,7 @@ export function RevampStep2TipologiaPage() {
 
         {/* ── Card: Disponibilità in più ruoli ── */}
         {selected ? (
-          <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", padding: "22px 28px" }}>
+          <div className={fcr.active ? (fcr.isLocked("comp_secondarie") ? "fcr-locked" : "fcr-active-group") : undefined} style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", padding: "22px 28px" }}>
             <div style={{ fontWeight: 700, fontSize: "1rem", color: "#1e293b", marginBottom: 4 }}>
               Disponibilità a lavorare in più ruoli
               <span style={{ fontWeight: 400, fontSize: "0.78rem", color: MUTED, marginLeft: 8 }}>opzionale</span>
@@ -453,6 +477,7 @@ export function RevampStep2TipologiaPage() {
                   checked={secondaryRoles.has(card.id)}
                   onChange={() => toggleSecondary(card.id)}
                   accent={accent}
+                  disabled={fcr.active && fcr.isLocked("comp_secondarie")}
                 />
               ))}
             </div>
@@ -467,7 +492,7 @@ export function RevampStep2TipologiaPage() {
       </div>
 
       {/* ── Bottom navigation ── */}
-      <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 40px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
+      {!fcr.active && <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 40px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
         <Link className="wizard-nav-button wizard-nav-button-prev"
           to={integrationEdit?.returnPath ?? `/apply/${registryParam}`}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: "#fff", border: `1.5px solid ${accent}`, borderRadius: 6, fontWeight: 600, fontSize: "0.85rem", color: accent, textDecoration: "none" }}
@@ -493,7 +518,9 @@ export function RevampStep2TipologiaPage() {
         >
           {integrationEdit ? "Salva e invia integrazione" : "Sezione successiva"} <ArrowRight size={15} />
         </button>
-      </div>
+      </div>}
+
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
 
     </div>
   );

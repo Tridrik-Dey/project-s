@@ -21,4 +21,5 @@ public final class RevampTableNames {
     public static final String AUDIT_EVENTS = "audit_events";
     public static final String USER_ADMIN_ROLES = "user_admin_roles";
     public static final String FIELD_CHANGE_REQUESTS = "field_change_requests";
+    public static final String DOCUMENT_RENEWAL_REQUESTS = "document_renewal_requests";
 }

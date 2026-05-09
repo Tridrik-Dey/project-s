@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, Clock3, FileUp, MessageSquare, 
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import {
   answerRevampIntegrationRequest,
+  completeRevampIntegrationItem,
   getOpenRevampIntegrationRequest,
   getRevampApplicationSections,
   getRevampApplicationSummary,
@@ -17,6 +18,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { AppToast } from "../../components/ui/toast";
 import { saveRevampApplicationIdForRegistry, saveRevampApplicationSession } from "../../utils/revampApplicationSession";
 import { clearRevampIntegrationEditSession, saveRevampIntegrationEditSession } from "../../utils/revampIntegrationEditSession";
+import { completedIntegrationCodes } from "../../utils/revampIntegrationCompletion";
 
 type RequestedItem = {
   code: string;
@@ -148,6 +150,7 @@ export function RevampSupplierIntegrationRequestPage() {
   }, [applicationId, token]);
 
   const requestedItems = useMemo(() => parseRequestedItems(request?.requestedItemsJson), [request]);
+  const completedCodes = useMemo(() => completedIntegrationCodes(request?.supplierResponseJson), [request?.supplierResponseJson]);
   const uploadItems = requestedItems.length > 0
     ? requestedItems
     : [{ code: "GENERAL_DOCUMENT", label: "Documento richiesto", instruction: "" }];
@@ -197,7 +200,18 @@ export function RevampSupplierIntegrationRequestPage() {
           token
         );
       }
-      await answerRevampIntegrationRequest(application.id, token);
+      if (requestedItems.length > 0 && selectedEntries.length > 0) {
+        const completedUploadCodes = new Set<string>();
+        for (const [key] of selectedEntries) {
+          const item = uploadItems.find((candidate) => `${candidate.code}-${candidate.label}` === key);
+          if (item?.code) completedUploadCodes.add(item.code.trim().toUpperCase());
+        }
+        for (const code of completedUploadCodes) {
+          await completeRevampIntegrationItem(application.id, code, token);
+        }
+      } else {
+        await answerRevampIntegrationRequest(application.id, token);
+      }
       clearRevampIntegrationEditSession();
       setToast({ message: "Integrazione inviata correttamente.", type: "success" });
       window.setTimeout(() => navigate(profilePath), 600);
@@ -211,14 +225,25 @@ export function RevampSupplierIntegrationRequestPage() {
 
   if (!auth) return <Navigate to="/login" replace />;
 
-  function rememberIntegrationEdit(step: number) {
+  function rememberIntegrationEdit(step: number, selectedItem?: RequestedItem) {
     if (!application) return;
+    const itemsForSession = selectedItem
+      ? [selectedItem]
+      : requestedItems.filter((item) => targetStepForItem(item) === step);
     saveRevampApplicationIdForRegistry(application.registryType, application.id);
     saveRevampIntegrationEditSession({
       applicationId: application.id,
       registryType: application.registryType,
       targetStep: step,
-      returnPath: `/application/${application.id}/integration-request`
+      returnPath: `/application/${application.id}/integration-request`,
+      requestedItems: itemsForSession
+        .map((item) => ({
+          code: item.code,
+          label: item.label,
+          documentType: item.documentType,
+          certificationKey: item.certificationKey,
+          targetStep: targetStepForItem(item)
+        }))
     });
   }
 
@@ -281,8 +306,9 @@ export function RevampSupplierIntegrationRequestPage() {
               ) : requestedItems.map((item) => {
                 const step = targetStepForItem(item);
                 const uploadKey = `${item.code}-${item.label}`;
+                const isCompleted = completedCodes.has(item.code.trim().toUpperCase());
                 return (
-                  <div key={`${item.code}-${item.label}`} className="supplier-integration-item">
+                  <div key={`${item.code}-${item.label}`} className={`supplier-integration-item${isCompleted ? " is-completed" : ""}`}>
                     <div className="supplier-integration-item-icon"><Wrench size={18} /></div>
                     <div>
                       <h3>{item.label}</h3>
@@ -292,6 +318,7 @@ export function RevampSupplierIntegrationRequestPage() {
                         <input
                           type="file"
                           accept=".pdf,.jpg,.jpeg,.png,.webp"
+                          disabled={isCompleted}
                           onChange={(event) => {
                             const file = event.currentTarget.files?.[0] ?? null;
                             setFilesByKey((prev) => ({ ...prev, [uploadKey]: file }));
@@ -302,9 +329,13 @@ export function RevampSupplierIntegrationRequestPage() {
                         <span className="supplier-integration-file-name">{filesByKey[uploadKey]?.name}</span>
                       ) : null}
                     </div>
-                    <Link className="supplier-integration-edit" to={wizardStepPath(application, step)} onClick={() => rememberIntegrationEdit(step)}>
-                      Modifica sezione {step}
-                    </Link>
+                    {isCompleted ? (
+                      <span className="supplier-integration-edit is-disabled">Completato</span>
+                    ) : (
+                      <Link className="supplier-integration-edit" to={wizardStepPath(application, step)} onClick={() => rememberIntegrationEdit(step, item)}>
+                        Modifica sezione {step}
+                      </Link>
+                    )}
                   </div>
                 );
               })}
@@ -333,15 +364,17 @@ export function RevampSupplierIntegrationRequestPage() {
               ) : null}
             </div>
 
-            <div className="supplier-integration-submit-card">
-              <div>
-                <h2>Quando hai completato le modifiche</h2>
-                <p>Invia l'integrazione: la pratica tornera al Gruppo Solco per una nuova verifica.</p>
+            {requestedItems.length === 0 ? (
+              <div className="supplier-integration-submit-card">
+                <div>
+                  <h2>Quando hai completato le modifiche</h2>
+                  <p>Invia l'integrazione: la pratica tornera al Gruppo Solco per una nuova verifica.</p>
+                </div>
+                <button type="button" className="supplier-integration-submit" onClick={sendIntegrationResponse} disabled={busy}>
+                  <Send size={16} /> {busy ? "Invio..." : "Invia integrazione"}
+                </button>
               </div>
-              <button type="button" className="supplier-integration-submit" onClick={sendIntegrationResponse} disabled={busy}>
-                <Send size={16} /> {busy ? "Invio..." : "Invia integrazione"}
-              </button>
-            </div>
+            ) : null}
           </>
         )}
       </div>

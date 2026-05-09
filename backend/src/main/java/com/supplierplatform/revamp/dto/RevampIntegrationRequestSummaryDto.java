@@ -12,7 +12,7 @@ public record RevampIntegrationRequestSummaryDto(
         LocalDateTime dueAt,
         String requestMessage,
         JsonNode requestedItemsJson,
+        JsonNode supplierResponseJson,
         LocalDateTime updatedAt
 ) {
 }
-

@@ -2,10 +2,15 @@ import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, CheckCircle, Info, Plus, Save, Trash2, Upload } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
-import { answerRevampIntegrationRequest, createRevampApplicationDraft, getMyLatestRevampApplication, getRevampApplicationSections, saveRevampApplicationSection, uploadRevampAttachment } from "../../api/revampApplicationApi";
+import { createRevampApplicationDraft, getMyLatestRevampApplication, getRevampApplicationSections, saveRevampApplicationSection, uploadRevampAttachment } from "../../api/revampApplicationApi";
 import type { AttachmentUploadResult } from "../../api/revampApplicationApi";
 import { loadRevampApplicationIdForRegistry, saveRevampApplicationIdForRegistry } from "../../utils/revampApplicationSession";
-import { clearRevampIntegrationEditSession, isRevampIntegrationEditFor } from "../../utils/revampIntegrationEditSession";
+import { clearRevampIntegrationEditSession, integrationEditHasAnyCode, isRevampIntegrationEditFor, loadRevampIntegrationEditSession } from "../../utils/revampIntegrationEditSession";
+import { completeRevampIntegrationEdit } from "../../utils/revampIntegrationCompletion";
+import { clearRevampDocumentRenewalEditSession, isRevampDocumentRenewalEditFor, requestRevampDocumentRenewalDrawerReopen } from "../../utils/revampDocumentRenewalEditSession";
+import { loadRevampFcrEditSession } from "../../utils/revampFcrEditSession";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
 import { AREE_TEMATICHE } from "./RevampStep3CompetenzePage";
 
 const NAVY  = "#0f2a52";
@@ -121,8 +126,33 @@ function Select({ label, required, value, onChange, options, error, hint }: {
 }
 
 function SectionCard({ title, desc, accent, badge, children }: { title: string; desc?: string; accent: string; badge?: string; children: React.ReactNode }) {
+  const fcrSession = loadRevampFcrEditSession();
+  const integrationSession = loadRevampIntegrationEditSession();
+  const automaticGroups = title.includes("Disponibilit") || title.includes("Territorio")
+    ? ["cap_operativa", "tariffe", "territorio"]
+    : title.includes("Esperienze")
+      ? ["esperienze"]
+      : title.includes("Referenze")
+        ? ["referenze"]
+        : title.includes("Allegati") || title.includes("Curriculum")
+          ? ["allegati"]
+          : [];
+  const integrationActive = integrationSession && automaticGroups.length
+    ? (
+        title.includes("Esperienze")
+          ? integrationEditHasAnyCode(integrationSession, ["EXPERIENCE_CONSISTENCY"])
+          : title.includes("Allegati") || title.includes("Curriculum")
+            ? integrationEditHasAnyCode(integrationSession, ["CV", "PROFESSIONAL_CERTIFICATION", "PROFESSIONAL_REGISTER"])
+            : false
+      )
+    : false;
+  const className = integrationSession && automaticGroups.length
+    ? integrationActive ? "fcr-active-group" : "fcr-locked"
+    : fcrSession && automaticGroups.length
+    ? automaticGroups.includes(fcrSession.sectionKey) ? "fcr-active-group" : "fcr-locked"
+    : undefined;
   return (
-    <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", padding: "22px 26px", marginBottom: 16 }}>
+    <div className={className} style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", padding: "22px 26px", marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: desc ? 4 : 14 }}>
         <div style={{ fontWeight: 700, fontSize: "1rem", color: accent }}>{title}</div>
         {badge && <span style={{ fontSize: "0.72rem", color: MUTED, fontWeight: 400 }}>{badge}</span>}
@@ -133,9 +163,9 @@ function SectionCard({ title, desc, accent, badge, children }: { title: string; 
   );
 }
 
-function FileUpload({ label, required, hint, tooltip, accept = ".pdf", maxMB = 5, uploading = false, result = null, onSelect }: {
+function FileUpload({ label, required, hint, tooltip, accept = ".pdf", maxMB = 5, uploading = false, disabled = false, result = null, onSelect }: {
   label: string; required?: boolean; hint?: string; tooltip?: string; accept?: string; maxMB?: number;
-  uploading?: boolean; result?: AttachmentUploadResult | null;
+  uploading?: boolean; disabled?: boolean; result?: AttachmentUploadResult | null;
   onSelect: (f: File) => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -164,8 +194,8 @@ function FileUpload({ label, required, hint, tooltip, accept = ".pdf", maxMB = 5
         )}
       </span>
       <div
-        onClick={() => !uploading && ref.current?.click()}
-        style={{ border: "1.5px dashed #d1d5db", borderRadius: 6, padding: "14px 16px", cursor: uploading ? "default" : "pointer", background: result ? "#f0fdf4" : "#fafafa", display: "flex", alignItems: "center", gap: 10 }}
+        onClick={() => !uploading && !disabled && ref.current?.click()}
+        style={{ border: "1.5px dashed #d1d5db", borderRadius: 6, padding: "14px 16px", cursor: uploading || disabled ? "default" : "pointer", background: result ? "#f0fdf4" : "#fafafa", display: "flex", alignItems: "center", gap: 10, opacity: disabled ? 0.65 : 1 }}
       >
         <Upload size={16} color={result ? "#16a34a" : "#9ca3af"} />
         {uploading
@@ -174,7 +204,7 @@ function FileUpload({ label, required, hint, tooltip, accept = ".pdf", maxMB = 5
             ? <span style={{ fontSize: "0.82rem", color: "#16a34a", fontWeight: 600 }}>✓ {result.fileName}</span>
             : <span style={{ fontSize: "0.82rem", color: "#9ca3af" }}>Clicca per caricare — PDF max {maxMB} MB</span>}
       </div>
-      <input ref={ref} type="file" accept={accept} style={{ display: "none" }} disabled={uploading}
+      <input ref={ref} type="file" accept={accept} style={{ display: "none" }} disabled={uploading || disabled}
         onChange={e => { const f = e.target.files?.[0]; if (f) onSelect(f); }} />
     </div>
   );
@@ -235,6 +265,10 @@ export function RevampStep4DisponibilitaPage() {
   const title      = isA ? "Albo A — Professionisti" : "Albo B — Aziende";
   const registryType = isA ? "ALBO_A" : "ALBO_B";
   const integrationEdit = isRevampIntegrationEditFor(registryType, 4);
+  const renewalEdit = isRevampDocumentRenewalEditFor(registryType, 4);
+  const renewalDocs = (renewalEdit?.documents ?? (renewalEdit ? [renewalEdit] : []));
+  const renewalHasDocumentType = (documentType: string) => renewalDocs.some(item => item.documentType === documentType);
+  const fcr = useFcrEditMode();
   const subtitle   = isDocente ? "Sezione 4 · Disponibilità, Esperienze e Allegati" : "Sezione 4 · Disponibilità e Allegati";
 
   /* ── 3A C — Disponibilità ── */
@@ -309,7 +343,7 @@ export function RevampStep4DisponibilitaPage() {
       }
     }
 
-    const existingAppId = loadRevampApplicationIdForRegistry(registryType);
+    const existingAppId = loadRevampFcrEditSession()?.applicationId ?? renewalEdit?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
     if (existingAppId) {
       getRevampApplicationSections(existingAppId, auth.token).then(applyS4).catch(() => {});
       return;
@@ -320,7 +354,7 @@ export function RevampStep4DisponibilitaPage() {
       saveRevampApplicationIdForRegistry(registryType, app.id);
       return getRevampApplicationSections(app.id, auth!.token!).then(applyS4);
     }).catch(() => {});
-  }, [auth?.token, registryType]);
+  }, [auth?.token, registryType, renewalEdit?.applicationId]);
 
   function clearErr(key: string) {
     setErrors(p => { const n = { ...p }; delete n[key]; return n; });
@@ -333,7 +367,7 @@ export function RevampStep4DisponibilitaPage() {
   async function handleSaveDraft() {
     if (!auth?.token) return;
     try {
-      const appId = loadRevampApplicationIdForRegistry(registryType);
+      const appId = loadRevampFcrEditSession()?.applicationId ?? renewalEdit?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
       if (!appId) return;
       await saveRevampApplicationSection(appId, "S4", JSON.stringify({
         disponibilita, areeSpecifiche, tariffaGiorn, tariffaOra,
@@ -362,7 +396,7 @@ export function RevampStep4DisponibilitaPage() {
       showToast(`Il file è troppo grande. Massimo ${maxMB} MB.`);
       return;
     }
-    let appId = loadRevampApplicationIdForRegistry(registryType);
+    let appId = loadRevampFcrEditSession()?.applicationId ?? renewalEdit?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
     if (!appId) {
       try {
         const draft = await createRevampApplicationDraft({ registryType, sourceChannel: "PUBLIC" }, auth.token);
@@ -385,8 +419,41 @@ export function RevampStep4DisponibilitaPage() {
     }
   }
 
+  function buildS4Payload() {
+    const activeCv = cvAttachment ?? cvAttachmentB;
+    const attachments = [];
+    if (activeCv) attachments.push({ documentType: "CV", fileName: activeCv.fileName, storageKey: activeCv.storageKey, mimeType: activeCv.mimeType, sizeBytes: activeCv.sizeBytes });
+    if (certAttachment) attachments.push({ documentType: "CERTIFICATION", fileName: certAttachment.fileName, storageKey: certAttachment.storageKey, mimeType: certAttachment.mimeType, sizeBytes: certAttachment.sizeBytes });
+    return {
+      disponibilita, areeSpecifiche, tariffaGiorn, tariffaOra,
+      areaTerrB, tariffaOraB,
+      espCount: esperienze.length,
+      committenti: esperienze.map(e => e.committente),
+      tipiIntervento: esperienze.map(e => e.tipoIntervento),
+      periodi: esperienze.map(e => `${e.periodoFrom}-${e.periodoTo}`),
+      cvName: activeCv?.fileName ?? null,
+      certName: certAttachment?.fileName ?? null,
+      operationalCapacity: isDocente ? (disponibilita || "disponibile") : (areaTerrB || "disponibile"),
+      references: referenze,
+      referenze,
+      attachments,
+    };
+  }
+
+  async function saveSectionProgrammatic() {
+    if (!auth?.token) throw new Error("Sessione scaduta. Effettua nuovamente il login.");
+    const appId = loadRevampFcrEditSession()?.applicationId ?? renewalEdit?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
+    if (!appId) throw new Error("Candidatura non trovata.");
+    await saveRevampApplicationSection(appId, "S4", JSON.stringify(buildS4Payload()), true, auth.token);
+  }
+
   function validate(): Record<string, string> {
     const e: Record<string, string> = {};
+    if (integrationEdit || renewalEdit) {
+      if (renewalHasDocumentType("CV") && !(cvAttachment ?? cvAttachmentB)) e.cv = "Il Curriculum Vitae aggiornato e obbligatorio.";
+      if (renewalHasDocumentType("CERTIFICATION") && !certAttachment) e.cert = "Il certificato aggiornato e obbligatorio.";
+      return e;
+    }
     if (isDocente) {
       if (!disponibilita) e.disponibilita = "Campo obbligatorio.";
       if (disponibilita === "si_aree" && !areeSpecifiche.trim()) e.areeSpecifiche = "Indica le aree specifiche.";
@@ -428,7 +495,7 @@ export function RevampStep4DisponibilitaPage() {
     let savedAppId: string | null = null;
     if (auth?.token && isA) {
       try {
-        const appId = loadRevampApplicationIdForRegistry(registryType);
+          const appId = loadRevampFcrEditSession()?.applicationId ?? renewalEdit?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
         if (appId) {
           savedAppId = appId;
           if (!isDocente) {
@@ -464,7 +531,7 @@ export function RevampStep4DisponibilitaPage() {
       }
     } else if (auth?.token && !isA) {
       try {
-        const appId = loadRevampApplicationIdForRegistry(registryType);
+        const appId = loadRevampFcrEditSession()?.applicationId ?? renewalEdit?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
         if (appId) {
           savedAppId = appId;
           await saveRevampApplicationSection(appId, "S4", sessionStorage.getItem("revamp_s4") ?? "{}", true, auth.token);
@@ -476,14 +543,18 @@ export function RevampStep4DisponibilitaPage() {
     }
     if (integrationEdit && auth?.token && savedAppId) {
       try {
-        await answerRevampIntegrationRequest(savedAppId, auth.token);
+        await completeRevampIntegrationEdit(savedAppId, auth.token, integrationEdit);
         clearRevampIntegrationEditSession();
       } catch {
         setSaveError("Invio integrazione non riuscito. Controlla i dati e riprova.");
         return;
       }
     }
-    navigate(integrationEdit?.returnPath ?? `/apply/${registryParam}/step/5`);
+    if (renewalEdit && auth?.token && savedAppId) {
+      requestRevampDocumentRenewalDrawerReopen(savedAppId, renewalEdit.batchId);
+      clearRevampDocumentRenewalEditSession();
+    }
+    navigate(integrationEdit?.returnPath ?? renewalEdit?.returnPath ?? `/apply/${registryParam}/step/5`);
   }
 
   const errorCount = Object.keys(errors).length;
@@ -496,9 +567,9 @@ export function RevampStep4DisponibilitaPage() {
         </div>
       )}
       <PageHeader title={title} subtitle={subtitle} savedAt={savedAt} onSave={() => void handleSaveDraft()} />
-      {integrationEdit ? (
+      {integrationEdit || renewalEdit || fcr.active ? (
         <div style={{ background: "#eff6ff", borderBottom: "1px solid #bfdbfe", padding: "12px 40px", color: "#174f82", fontSize: "0.86rem", fontWeight: 700 }}>
-          Integrazione richiesta - Correggi questa sezione, salva e invia la risposta.
+          {renewalEdit ? `Rinnovo documento - Aggiorna solo ${renewalEdit.documentLabel}, poi salva e invia.` : fcr.active ? "Richiesta di modifica - Aggiorna solo il gruppo sbloccato, poi salva e invia." : "Integrazione richiesta - Correggi questa sezione, salva e invia la risposta."}
         </div>
       ) : (
         <StepBar active={3} accent={accent} />
@@ -664,9 +735,11 @@ export function RevampStep4DisponibilitaPage() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <FileUpload label="Curriculum Vitae aggiornato" required hint="PDF max 5 MB" tooltip="deve includere le principali esperienze di docenza"
                   uploading={cvUploading} result={cvAttachment}
+                  disabled={Boolean(renewalEdit && !renewalHasDocumentType("CV"))}
                   onSelect={f => void handleFileUpload(f, 5, setCvUploading, setCvAttachment, "cv")} />
                 <FileUpload label="Certificazioni e attestati" hint="opzionale — PDF max 5 MB"
                   uploading={certUploading} result={certAttachment}
+                  disabled={Boolean(renewalEdit && !renewalHasDocumentType("CERTIFICATION"))}
                   onSelect={f => void handleFileUpload(f, 5, setCertUploading, setCertAttachment)} />
               </div>
             </SectionCard>
@@ -699,6 +772,7 @@ export function RevampStep4DisponibilitaPage() {
               )}
               <FileUpload label="Curriculum Vitae aggiornato" required hint="PDF max 5 MB"
                 uploading={cvUploadingB} result={cvAttachmentB}
+                disabled={Boolean(renewalEdit && !renewalHasDocumentType("CV"))}
                 onSelect={f => void handleFileUpload(f, 5, setCvUploadingB, setCvAttachmentB, "cv")} />
             </SectionCard>
           </>
@@ -720,12 +794,12 @@ export function RevampStep4DisponibilitaPage() {
       </div>
 
       {/* ── Bottom nav ── */}
-      <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 36px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
-        <Link className="wizard-nav-button wizard-nav-button-prev" to={integrationEdit?.returnPath ?? `/apply/${registryParam}/step/3`} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: "#fff", border: `1.5px solid ${accent}`, borderRadius: 6, fontWeight: 600, fontSize: "0.84rem", color: accent, textDecoration: "none" }}>
-          <ArrowLeft size={14} /> {integrationEdit ? "Torna alla richiesta" : "Sezione precedente"}
+      {!fcr.active && <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 36px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
+        <Link className="wizard-nav-button wizard-nav-button-prev" to={integrationEdit?.returnPath ?? renewalEdit?.returnPath ?? `/apply/${registryParam}/step/3`} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: "#fff", border: `1.5px solid ${accent}`, borderRadius: 6, fontWeight: 600, fontSize: "0.84rem", color: accent, textDecoration: "none" }}>
+          <ArrowLeft size={14} /> {integrationEdit || renewalEdit ? "Torna alla richiesta" : "Sezione precedente"}
         </Link>
-        {integrationEdit ? (
-          <div style={{ fontSize: "0.82rem", color: MUTED, fontWeight: 700 }}>Modalita integrazione</div>
+        {integrationEdit || renewalEdit ? (
+          <div style={{ fontSize: "0.82rem", color: MUTED, fontWeight: 700 }}>{renewalEdit ? "Modalita rinnovo documento" : "Modalita integrazione"}</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
             <span style={{ fontSize: "0.77rem", color: MUTED }}>Avanzamento: <strong>80%</strong></span>
@@ -735,9 +809,10 @@ export function RevampStep4DisponibilitaPage() {
           </div>
         )}
         <button className="wizard-nav-button wizard-nav-button-next" type="button" onClick={handleNext} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 18px", background: accent, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, fontSize: "0.84rem", cursor: "pointer" }}>
-          {integrationEdit ? "Salva e invia integrazione" : "Sezione successiva"} <ArrowRight size={14} />
+          {renewalEdit ? "Salva e invia documento" : integrationEdit ? "Salva e invia integrazione" : "Sezione successiva"} <ArrowRight size={14} />
         </button>
-      </div>
+      </div>}
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
     </div>
   );
 }

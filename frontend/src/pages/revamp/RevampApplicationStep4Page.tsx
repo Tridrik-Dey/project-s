@@ -13,6 +13,8 @@ import { useAuth } from "../../auth/AuthContext";
 import { useI18n } from "../../i18n/I18nContext";
 import { saveRevampApplicationSession } from "../../utils/revampApplicationSession";
 import { resolveStepGuardRedirect } from "./revampFlow";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 type FieldErrors = Record<string, string>;
@@ -73,6 +75,7 @@ export function RevampApplicationStep4Page() {
   const { applicationId } = useParams();
   const { auth } = useAuth();
   const { t } = useI18n();
+  const fcr = useFcrEditMode();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [summary, setSummary] = useState<RevampApplicationSummary | null>(null);
@@ -167,6 +170,12 @@ export function RevampApplicationStep4Page() {
     setSaveState((prev) => (prev === "saving" ? prev : "dirty"));
   }
 
+  function fcrGroup(key: string): string {
+    if (!fcr.active) return "fcr-group";
+    if (fcr.isLocked(key)) return "fcr-group fcr-locked";
+    return "fcr-group fcr-active-group";
+  }
+
   function validate(type: RevampRegistryType): FieldErrors {
     if (type === "ALBO_A") {
       const next: FieldErrors = {};
@@ -198,12 +207,7 @@ export function RevampApplicationStep4Page() {
     return next;
   }
 
-  async function onSave(event: FormEvent) {
-    event.preventDefault();
-    if (!applicationId || !auth?.token || !registryType) return;
-    const validationErrors = validate(registryType);
-    setErrors(validationErrors);
-    const completed = Object.keys(validationErrors).length === 0;
+  function buildPayload(type: RevampRegistryType) {
     const normalizeAttachments = (attachments: AttachmentInput[]) =>
       attachments
         .map((item) => ({
@@ -215,9 +219,18 @@ export function RevampApplicationStep4Page() {
           expiresAt: item.expiresAt.trim()
         }))
         .filter((item) => item.documentType || item.fileName || item.storageKey);
-    const payload = registryType === "ALBO_A"
+    return type === "ALBO_A"
       ? { ...alboA, attachments: normalizeAttachments(alboA.attachments) }
       : { ...alboB, attachments: normalizeAttachments(alboB.attachments) };
+  }
+
+  async function onSave(event: FormEvent) {
+    event.preventDefault();
+    if (!applicationId || !auth?.token || !registryType) return;
+    const validationErrors = validate(registryType);
+    setErrors(validationErrors);
+    const completed = Object.keys(validationErrors).length === 0;
+    const payload = buildPayload(registryType);
 
     setSaveState("saving");
     try {
@@ -232,6 +245,29 @@ export function RevampApplicationStep4Page() {
       setSaveState("saved");
     } catch {
       setSaveState("error");
+    }
+  }
+
+  async function saveSectionProgrammatic(): Promise<void> {
+    if (!applicationId || !auth?.token || !registryType) throw new Error("missing context");
+    const validationErrors = validate(registryType);
+    setErrors(validationErrors);
+    const completed = Object.keys(validationErrors).length === 0;
+    const payload = buildPayload(registryType);
+    setSaveState("saving");
+    try {
+      const saved = await saveRevampApplicationSection(
+        applicationId,
+        "S4",
+        JSON.stringify(payload),
+        completed,
+        auth.token
+      );
+      setLastSavedAt(new Date(saved.updatedAt).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }));
+      setSaveState("saved");
+    } catch (err) {
+      setSaveState("error");
+      throw err;
     }
   }
 
@@ -271,7 +307,9 @@ export function RevampApplicationStep4Page() {
       <div className="panel revamp-step-header">
         <h2>{registryType === "ALBO_A" ? t("revamp.step4.title.alboA") : t("revamp.step4.title.alboB")}</h2>
         <p className="subtle">
-          {t("revamp.step.common.subtitle", { id: applicationId, state: saveLabel })}
+          {fcr.active
+            ? `Candidatura ${applicationId} - Richiesta di modifica: ${saveLabel}`
+            : t("revamp.step.common.subtitle", { id: applicationId, state: saveLabel })}
         </p>
       </div>
 
@@ -279,387 +317,417 @@ export function RevampApplicationStep4Page() {
         {registryType === "ALBO_A" ? (
           <>
             <h3 className="revamp-step-subtitle"><UserCheck className="h-4 w-4" /> {t("revamp.step4.alboA.sectionTitle")}</h3>
-            <div className="grid-form">
-              <label className={`floating-field ${alboA.operationalCapacity ? "has-value" : ""}`}>
-                <textarea
-                  className="floating-input auth-input"
-                  value={alboA.operationalCapacity}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, operationalCapacity: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                  rows={3}
-                />
-                <span className="floating-field-label">{t("revamp.step4.field.operationalCapacity")}</span>
-              </label>
-            </div>
-            <div className="home-step-card">
-              <div className="home-step-head">
-                <span className="home-step-index">R</span>
-                <h4>Referenze (opzionali, max 2)</h4>
+
+            <fieldset className={fcrGroup("cap_operativa")} disabled={fcr.active && fcr.isLocked("cap_operativa")}>
+              <legend className="sr-only">Capacità operativa</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${alboA.operationalCapacity ? "has-value" : ""}`}>
+                  <textarea
+                    className="floating-input auth-input"
+                    value={alboA.operationalCapacity}
+                    onChange={(e) => {
+                      setAlboA((prev) => ({ ...prev, operationalCapacity: e.target.value }));
+                      markDirty();
+                    }}
+                    placeholder=" "
+                    rows={3}
+                  />
+                  <span className="floating-field-label">{t("revamp.step4.field.operationalCapacity")}</span>
+                </label>
               </div>
-              <div className="stack">
-                {alboA.references.map((reference, index) => (
-                  <div key={`reference-${index}`} className="grid-form">
-                    <label className={`floating-field ${reference.fullName ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={reference.fullName}
-                        onChange={(e) => {
-                          const value = e.target.value;
+              {errors.operationalCapacity ? <p className="error">{errors.operationalCapacity}</p> : null}
+            </fieldset>
+
+            <fieldset className={fcrGroup("referenze")} disabled={fcr.active && fcr.isLocked("referenze")}>
+              <legend className="sr-only">Referenze</legend>
+              <div className="home-step-card">
+                <div className="home-step-head">
+                  <span className="home-step-index">R</span>
+                  <h4>Referenze (opzionali, max 2)</h4>
+                </div>
+                <div className="stack">
+                  {alboA.references.map((reference, index) => (
+                    <div key={`reference-${index}`} className="grid-form">
+                      <label className={`floating-field ${reference.fullName ? "has-value" : ""}`}>
+                        <input
+                          className="floating-input auth-input"
+                          value={reference.fullName}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAlboA((prev) => ({
+                              ...prev,
+                              references: prev.references.map((item, itemIndex) =>
+                                itemIndex === index ? { ...item, fullName: value } : item
+                              )
+                            }));
+                            markDirty();
+                          }}
+                          placeholder=" "
+                        />
+                        <span className="floating-field-label">Nome e cognome</span>
+                      </label>
+                      <label className={`floating-field ${reference.organizationRole ? "has-value" : ""}`}>
+                        <input
+                          className="floating-input auth-input"
+                          value={reference.organizationRole}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAlboA((prev) => ({
+                              ...prev,
+                              references: prev.references.map((item, itemIndex) =>
+                                itemIndex === index ? { ...item, organizationRole: value } : item
+                              )
+                            }));
+                            markDirty();
+                          }}
+                          placeholder=" "
+                        />
+                        <span className="floating-field-label">Ruolo / organizzazione</span>
+                      </label>
+                      <label className={`floating-field ${reference.email ? "has-value" : ""}`}>
+                        <input
+                          className="floating-input auth-input"
+                          type="email"
+                          value={reference.email}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAlboA((prev) => ({
+                              ...prev,
+                              references: prev.references.map((item, itemIndex) =>
+                                itemIndex === index ? { ...item, email: value } : item
+                              )
+                            }));
+                            markDirty();
+                          }}
+                          placeholder=" "
+                        />
+                        <span className="floating-field-label">Email</span>
+                      </label>
+                      <label className={`floating-field ${reference.phone ? "has-value" : ""}`}>
+                        <input
+                          className="floating-input auth-input"
+                          value={reference.phone}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAlboA((prev) => ({
+                              ...prev,
+                              references: prev.references.map((item, itemIndex) =>
+                                itemIndex === index ? { ...item, phone: value } : item
+                              )
+                            }));
+                            markDirty();
+                          }}
+                          placeholder=" "
+                        />
+                        <span className="floating-field-label">Telefono</span>
+                      </label>
+                      <button
+                        type="button"
+                        className="home-btn home-btn-secondary"
+                        onClick={() => {
                           setAlboA((prev) => ({
                             ...prev,
-                            references: prev.references.map((item, itemIndex) =>
-                              itemIndex === index ? { ...item, fullName: value } : item
-                            )
-                          }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">Nome e cognome</span>
-                    </label>
-                    <label className={`floating-field ${reference.organizationRole ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={reference.organizationRole}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setAlboA((prev) => ({
-                            ...prev,
-                            references: prev.references.map((item, itemIndex) =>
-                              itemIndex === index ? { ...item, organizationRole: value } : item
-                            )
-                          }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">Ruolo / organizzazione</span>
-                    </label>
-                    <label className={`floating-field ${reference.email ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        type="email"
-                        value={reference.email}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setAlboA((prev) => ({
-                            ...prev,
-                            references: prev.references.map((item, itemIndex) =>
-                              itemIndex === index ? { ...item, email: value } : item
-                            )
-                          }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">Email</span>
-                    </label>
-                    <label className={`floating-field ${reference.phone ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={reference.phone}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setAlboA((prev) => ({
-                            ...prev,
-                            references: prev.references.map((item, itemIndex) =>
-                              itemIndex === index ? { ...item, phone: value } : item
-                            )
-                          }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">Telefono</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="home-btn home-btn-secondary"
-                      onClick={() => {
-                        setAlboA((prev) => ({
-                          ...prev,
-                          references: prev.references.length > 1 ? prev.references.filter((_, itemIndex) => itemIndex !== index) : prev.references
-                        }));
-                        markDirty();
-                      }}
-                    >
-                      Rimuovi
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="home-btn home-btn-secondary"
-                  disabled={alboA.references.length >= 2}
-                  onClick={() => {
-                    setAlboA((prev) => ({
-                      ...prev,
-                      references: [...prev.references, { fullName: "", organizationRole: "", email: "", phone: "" }]
-                    }));
-                    markDirty();
-                  }}
-                >
-                  + Aggiungi referenza
-                </button>
-              </div>
-            </div>
-            <div className="home-step-card">
-              <div className="home-step-head">
-                <span className="home-step-index">D</span>
-                <h4>Allegati (CV obbligatorio)</h4>
-              </div>
-              <div className="stack">
-                {alboA.attachments.map((attachment, index) => (
-                  <div key={`alboA-attachment-${index}`} className="grid-form">
-                    <label className="floating-field has-value">
-                      <select
-                        className="floating-input auth-input"
-                        value={attachment.documentType}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setAlboA((prev) => ({
-                            ...prev,
-                            attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, documentType: value } : item)
+                            references: prev.references.length > 1 ? prev.references.filter((_, itemIndex) => itemIndex !== index) : prev.references
                           }));
                           markDirty();
                         }}
                       >
-                        <option value="CV">CV</option>
-                        <option value="CERTIFICATION">Certificazione</option>
-                        <option value="OTHER">Altro</option>
-                      </select>
-                      <span className="floating-field-label">Tipo documento</span>
-                    </label>
-                    <label className={`floating-field ${attachment.fileName ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={attachment.fileName}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setAlboA((prev) => ({
-                            ...prev,
-                            attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, fileName: value } : item)
-                          }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">fileName *</span>
-                    </label>
-                    <label className={`floating-field ${attachment.storageKey ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={attachment.storageKey}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setAlboA((prev) => ({
-                            ...prev,
-                            attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, storageKey: value } : item)
-                          }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">storageKey *</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="home-btn home-btn-secondary"
-                      onClick={() => {
-                        setAlboA((prev) => ({
-                          ...prev,
-                          attachments: prev.attachments.length > 1 ? prev.attachments.filter((_, i) => i !== index) : prev.attachments
-                        }));
-                        markDirty();
-                      }}
-                    >
-                      Rimuovi
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="home-btn home-btn-secondary"
-                  onClick={() => {
-                    setAlboA((prev) => ({
-                      ...prev,
-                      attachments: [...prev.attachments, { documentType: "OTHER", fileName: "", mimeType: "", sizeBytes: "", storageKey: "", expiresAt: "" }]
-                    }));
-                    markDirty();
-                  }}
-                >
-                  + Aggiungi allegato
-                </button>
+                        Rimuovi
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="home-btn home-btn-secondary"
+                    disabled={alboA.references.length >= 2}
+                    onClick={() => {
+                      setAlboA((prev) => ({
+                        ...prev,
+                        references: [...prev.references, { fullName: "", organizationRole: "", email: "", phone: "" }]
+                      }));
+                      markDirty();
+                    }}
+                  >
+                    + Aggiungi referenza
+                  </button>
+                </div>
               </div>
-            </div>
-            {errors.operationalCapacity ? <p className="error">{errors.operationalCapacity}</p> : null}
-            {errors.references ? <p className="error">{errors.references}</p> : null}
-            {errors.attachments ? <p className="error">{errors.attachments}</p> : null}
+              {errors.references ? <p className="error">{errors.references}</p> : null}
+            </fieldset>
+
+            <fieldset className={fcrGroup("allegati")} disabled={fcr.active && fcr.isLocked("allegati")}>
+              <legend className="sr-only">Allegati</legend>
+              <div className="home-step-card">
+                <div className="home-step-head">
+                  <span className="home-step-index">D</span>
+                  <h4>Allegati (CV obbligatorio)</h4>
+                </div>
+                <div className="stack">
+                  {alboA.attachments.map((attachment, index) => (
+                    <div key={`alboA-attachment-${index}`} className="grid-form">
+                      <label className="floating-field has-value">
+                        <select
+                          className="floating-input auth-input"
+                          value={attachment.documentType}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAlboA((prev) => ({
+                              ...prev,
+                              attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, documentType: value } : item)
+                            }));
+                            markDirty();
+                          }}
+                        >
+                          <option value="CV">CV</option>
+                          <option value="CERTIFICATION">Certificazione</option>
+                          <option value="OTHER">Altro</option>
+                        </select>
+                        <span className="floating-field-label">Tipo documento</span>
+                      </label>
+                      <label className={`floating-field ${attachment.fileName ? "has-value" : ""}`}>
+                        <input
+                          className="floating-input auth-input"
+                          value={attachment.fileName}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAlboA((prev) => ({
+                              ...prev,
+                              attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, fileName: value } : item)
+                            }));
+                            markDirty();
+                          }}
+                          placeholder=" "
+                        />
+                        <span className="floating-field-label">fileName *</span>
+                      </label>
+                      <label className={`floating-field ${attachment.storageKey ? "has-value" : ""}`}>
+                        <input
+                          className="floating-input auth-input"
+                          value={attachment.storageKey}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAlboA((prev) => ({
+                              ...prev,
+                              attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, storageKey: value } : item)
+                            }));
+                            markDirty();
+                          }}
+                          placeholder=" "
+                        />
+                        <span className="floating-field-label">storageKey *</span>
+                      </label>
+                      <button
+                        type="button"
+                        className="home-btn home-btn-secondary"
+                        onClick={() => {
+                          setAlboA((prev) => ({
+                            ...prev,
+                            attachments: prev.attachments.length > 1 ? prev.attachments.filter((_, i) => i !== index) : prev.attachments
+                          }));
+                          markDirty();
+                        }}
+                      >
+                        Rimuovi
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="home-btn home-btn-secondary"
+                    onClick={() => {
+                      setAlboA((prev) => ({
+                        ...prev,
+                        attachments: [...prev.attachments, { documentType: "OTHER", fileName: "", mimeType: "", sizeBytes: "", storageKey: "", expiresAt: "" }]
+                      }));
+                      markDirty();
+                    }}
+                  >
+                    + Aggiungi allegato
+                  </button>
+                </div>
+              </div>
+              {errors.attachments ? <p className="error">{errors.attachments}</p> : null}
+            </fieldset>
           </>
         ) : (
           <>
             <h3 className="revamp-step-subtitle"><Award className="h-4 w-4" /> {t("revamp.step4.alboB.sectionTitle")}</h3>
-            <div className="grid-form">
-              <label className="floating-field has-value">
-                <select
-                  className="floating-input auth-input"
-                  value={alboB.iso9001}
-                  onChange={(e) => {
-                    setAlboB((prev) => ({ ...prev, iso9001: e.target.value }));
-                    markDirty();
-                  }}
-                >
-                  <option value="">{t("revamp.step4.option.isoPrompt")}</option>
-                  <option value="YES">{t("revamp.step4.option.yes")}</option>
-                  <option value="NO">{t("revamp.step4.option.no")}</option>
-                </select>
-                <span className="floating-field-label">{t("revamp.step4.field.iso9001")}</span>
-              </label>
-              <label className={`floating-field ${alboB.accreditationSummary ? "has-value" : ""}`}>
-                <textarea
-                  className="floating-input auth-input"
-                  value={alboB.accreditationSummary}
-                  onChange={(e) => {
-                    setAlboB((prev) => ({ ...prev, accreditationSummary: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                  rows={3}
-                />
-                <span className="floating-field-label">{t("revamp.step4.field.accreditationSummary")}</span>
-              </label>
-              <label className={`floating-field ${alboB.certificationsNotes ? "has-value" : ""}`}>
-                <textarea
-                  className="floating-input auth-input"
-                  value={alboB.certificationsNotes}
-                  onChange={(e) => {
-                    setAlboB((prev) => ({ ...prev, certificationsNotes: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                  rows={2}
-                />
-                <span className="floating-field-label">{t("revamp.step4.field.certificationNotes")}</span>
-              </label>
-            </div>
-            <div className="home-step-card">
-              <div className="home-step-head">
-                <span className="home-step-index">D</span>
-                <h4>Allegati (Visura + DURC obbligatori)</h4>
+
+            <fieldset className={fcrGroup("certificazioni")} disabled={fcr.active && fcr.isLocked("certificazioni")}>
+              <legend className="sr-only">Certificazioni</legend>
+              <div className="grid-form">
+                <label className="floating-field has-value">
+                  <select
+                    className="floating-input auth-input"
+                    value={alboB.iso9001}
+                    onChange={(e) => {
+                      setAlboB((prev) => ({ ...prev, iso9001: e.target.value }));
+                      markDirty();
+                    }}
+                  >
+                    <option value="">{t("revamp.step4.option.isoPrompt")}</option>
+                    <option value="YES">{t("revamp.step4.option.yes")}</option>
+                    <option value="NO">{t("revamp.step4.option.no")}</option>
+                  </select>
+                  <span className="floating-field-label">{t("revamp.step4.field.iso9001")}</span>
+                </label>
+                <label className={`floating-field ${alboB.accreditationSummary ? "has-value" : ""}`}>
+                  <textarea
+                    className="floating-input auth-input"
+                    value={alboB.accreditationSummary}
+                    onChange={(e) => {
+                      setAlboB((prev) => ({ ...prev, accreditationSummary: e.target.value }));
+                      markDirty();
+                    }}
+                    placeholder=" "
+                    rows={3}
+                  />
+                  <span className="floating-field-label">{t("revamp.step4.field.accreditationSummary")}</span>
+                </label>
+                <label className={`floating-field ${alboB.certificationsNotes ? "has-value" : ""}`}>
+                  <textarea
+                    className="floating-input auth-input"
+                    value={alboB.certificationsNotes}
+                    onChange={(e) => {
+                      setAlboB((prev) => ({ ...prev, certificationsNotes: e.target.value }));
+                      markDirty();
+                    }}
+                    placeholder=" "
+                    rows={2}
+                  />
+                  <span className="floating-field-label">{t("revamp.step4.field.certificationNotes")}</span>
+                </label>
               </div>
-              <div className="stack">
-                {alboB.attachments.map((attachment, index) => (
-                  <div key={`alboB-attachment-${index}`} className="grid-form">
-                    <label className="floating-field has-value">
-                      <select
-                        className="floating-input auth-input"
-                        value={attachment.documentType}
-                        onChange={(e) => {
-                          const value = e.target.value;
+              {errors.iso9001 ? <p className="error">{errors.iso9001}</p> : null}
+              {errors.accreditationSummary ? <p className="error">{errors.accreditationSummary}</p> : null}
+            </fieldset>
+
+            <fieldset className={fcrGroup("allegati_b")} disabled={fcr.active && fcr.isLocked("allegati_b")}>
+              <legend className="sr-only">Allegati</legend>
+              <div className="home-step-card">
+                <div className="home-step-head">
+                  <span className="home-step-index">D</span>
+                  <h4>Allegati (Visura + DURC obbligatori)</h4>
+                </div>
+                <div className="stack">
+                  {alboB.attachments.map((attachment, index) => (
+                    <div key={`alboB-attachment-${index}`} className="grid-form">
+                      <label className="floating-field has-value">
+                        <select
+                          className="floating-input auth-input"
+                          value={attachment.documentType}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAlboB((prev) => ({
+                              ...prev,
+                              attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, documentType: value } : item)
+                            }));
+                            markDirty();
+                          }}
+                        >
+                          <option value="VISURA_CAMERALE">Visura camerale</option>
+                          <option value="DURC">DURC</option>
+                          <option value="COMPANY_PROFILE">Company profile</option>
+                          <option value="CERTIFICATION">Certificazione</option>
+                          <option value="OTHER">Altro</option>
+                        </select>
+                        <span className="floating-field-label">Tipo documento</span>
+                      </label>
+                      <label className={`floating-field ${attachment.fileName ? "has-value" : ""}`}>
+                        <input
+                          className="floating-input auth-input"
+                          value={attachment.fileName}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAlboB((prev) => ({
+                              ...prev,
+                              attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, fileName: value } : item)
+                            }));
+                            markDirty();
+                          }}
+                          placeholder=" "
+                        />
+                        <span className="floating-field-label">fileName *</span>
+                      </label>
+                      <label className={`floating-field ${attachment.storageKey ? "has-value" : ""}`}>
+                        <input
+                          className="floating-input auth-input"
+                          value={attachment.storageKey}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAlboB((prev) => ({
+                              ...prev,
+                              attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, storageKey: value } : item)
+                            }));
+                            markDirty();
+                          }}
+                          placeholder=" "
+                        />
+                        <span className="floating-field-label">storageKey *</span>
+                      </label>
+                      <button
+                        type="button"
+                        className="home-btn home-btn-secondary"
+                        onClick={() => {
                           setAlboB((prev) => ({
                             ...prev,
-                            attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, documentType: value } : item)
+                            attachments: prev.attachments.length > 1 ? prev.attachments.filter((_, i) => i !== index) : prev.attachments
                           }));
                           markDirty();
                         }}
                       >
-                        <option value="VISURA_CAMERALE">Visura camerale</option>
-                        <option value="DURC">DURC</option>
-                        <option value="COMPANY_PROFILE">Company profile</option>
-                        <option value="CERTIFICATION">Certificazione</option>
-                        <option value="OTHER">Altro</option>
-                      </select>
-                      <span className="floating-field-label">Tipo documento</span>
-                    </label>
-                    <label className={`floating-field ${attachment.fileName ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={attachment.fileName}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setAlboB((prev) => ({
-                            ...prev,
-                            attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, fileName: value } : item)
-                          }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">fileName *</span>
-                    </label>
-                    <label className={`floating-field ${attachment.storageKey ? "has-value" : ""}`}>
-                      <input
-                        className="floating-input auth-input"
-                        value={attachment.storageKey}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setAlboB((prev) => ({
-                            ...prev,
-                            attachments: prev.attachments.map((item, itemIndex) => itemIndex === index ? { ...item, storageKey: value } : item)
-                          }));
-                          markDirty();
-                        }}
-                        placeholder=" "
-                      />
-                      <span className="floating-field-label">storageKey *</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="home-btn home-btn-secondary"
-                      onClick={() => {
-                        setAlboB((prev) => ({
-                          ...prev,
-                          attachments: prev.attachments.length > 1 ? prev.attachments.filter((_, i) => i !== index) : prev.attachments
-                        }));
-                        markDirty();
-                      }}
-                    >
-                      Rimuovi
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="home-btn home-btn-secondary"
-                  onClick={() => {
-                    setAlboB((prev) => ({
-                      ...prev,
-                      attachments: [...prev.attachments, { documentType: "OTHER", fileName: "", mimeType: "", sizeBytes: "", storageKey: "", expiresAt: "" }]
-                    }));
-                    markDirty();
-                  }}
-                >
-                  + Aggiungi allegato
-                </button>
+                        Rimuovi
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="home-btn home-btn-secondary"
+                    onClick={() => {
+                      setAlboB((prev) => ({
+                        ...prev,
+                        attachments: [...prev.attachments, { documentType: "OTHER", fileName: "", mimeType: "", sizeBytes: "", storageKey: "", expiresAt: "" }]
+                      }));
+                      markDirty();
+                    }}
+                  >
+                    + Aggiungi allegato
+                  </button>
+                </div>
               </div>
-            </div>
-            {errors.iso9001 ? <p className="error">{errors.iso9001}</p> : null}
-            {errors.accreditationSummary ? <p className="error">{errors.accreditationSummary}</p> : null}
-            {errors.attachments ? <p className="error">{errors.attachments}</p> : null}
-            {errors.certificationAttachment ? <p className="error">{errors.certificationAttachment}</p> : null}
+              {errors.attachments ? <p className="error">{errors.attachments}</p> : null}
+              {errors.certificationAttachment ? <p className="error">{errors.certificationAttachment}</p> : null}
+            </fieldset>
           </>
         )}
 
         <div className="revamp-step-actions">
-          <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/3`}>
-            {t("revamp.step4.backToStep3")}
-          </Link>
-          <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/5`}>
-            {t("revamp.step4.goToStep5")}
-          </Link>
-          <button type="submit" className="home-btn home-btn-primary" disabled={saveState === "saving"}>
-            <Save className="h-4 w-4" />
-            <span>{saveState === "saving" ? t("revamp.step.common.saving") : t("revamp.step.common.saveSection")}</span>
-          </button>
-          <Link className="home-btn home-btn-secondary" to="/supplier">
-            <Building2 className="h-4 w-4" />
-            <span>{t("revamp.step.common.supplierArea")}</span>
-          </Link>
+          {!fcr.active && (
+            <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/3`}>
+              {t("revamp.step4.backToStep3")}
+            </Link>
+          )}
+          {!fcr.active && (
+            <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/5`}>
+              {t("revamp.step4.goToStep5")}
+            </Link>
+          )}
+          {!fcr.active && (
+            <button type="submit" className="home-btn home-btn-primary" disabled={saveState === "saving"}>
+              <Save className="h-4 w-4" />
+              <span>{saveState === "saving" ? t("revamp.step.common.saving") : t("revamp.step.common.saveSection")}</span>
+            </button>
+          )}
+          {!fcr.active && (
+            <Link className="home-btn home-btn-secondary" to="/supplier">
+              <Building2 className="h-4 w-4" />
+              <span>{t("revamp.step.common.supplierArea")}</span>
+            </Link>
+          )}
         </div>
       </form>
+
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
     </section>
   );
 }

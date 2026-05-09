@@ -10,7 +10,7 @@ import lombok.Setter;
 public class CreateFieldChangeRequestDto {
 
     @NotBlank
-    @Size(max = 16)
+    @Size(max = 32)
     private String sectionKey;
 
     @NotBlank

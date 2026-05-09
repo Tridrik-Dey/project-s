@@ -1,9 +1,11 @@
-import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { BarChart3, Building2, ChevronDown, ClipboardList, Eye, LayoutDashboard, LogOut, MailPlus, Settings, ShieldCheck, Star, Users } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { useAdminGovernanceRole } from "../../hooks/useAdminGovernanceRole";
+import { useAdminRealtimeRefresh } from "../../hooks/useAdminRealtimeRefresh";
 import { SmtpSettingsModal } from "../../components/admin/SmtpSettingsModal";
+import { listPendingAdminFieldChangeRequests } from "../../api/fieldChangeRequestApi";
 
 type AdminNavKey = "dashboard" | "alboA" | "alboB" | "candidature" | "inviti" | "valutazioni" | "report" | "impostazioni";
 
@@ -73,6 +75,7 @@ export function AdminCandidatureShell({ active, children }: AdminCandidatureShel
   const [sidebarExpanded, setSidebarExpanded] = useState(() => {
     return sessionStorage.getItem(SIDEBAR_EXPANDED_SESSION_KEY) === "true";
   });
+  const [pendingFieldChangeCount, setPendingFieldChangeCount] = useState(0);
   const userRef = useRef<HTMLDivElement>(null);
   const sidebarCollapseTimerRef = useRef<number | null>(null);
   const resizeRafRef = useRef<number | null>(null);
@@ -81,6 +84,20 @@ export function AdminCandidatureShell({ active, children }: AdminCandidatureShel
   const resolvedRoleTone = roleTone(adminRole);
   const sidebarCompact = !sidebarExpanded || sidebarWidth <= SIDEBAR_COMPACT_THRESHOLD;
   const renderedSidebarWidth = sidebarExpanded ? sidebarWidth : SIDEBAR_WIDTH_MIN;
+  const canManageFieldChanges = adminRole === "SUPER_ADMIN" || adminRole === "RESPONSABILE_ALBO";
+
+  const loadPendingFieldChangeCount = useCallback(async () => {
+    if (!auth?.token || !canManageFieldChanges) {
+      setPendingFieldChangeCount(0);
+      return;
+    }
+    try {
+      const items = await listPendingAdminFieldChangeRequests(auth.token);
+      setPendingFieldChangeCount(items.length);
+    } catch {
+      setPendingFieldChangeCount(0);
+    }
+  }, [auth?.token, canManageFieldChanges]);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
@@ -100,6 +117,20 @@ export function AdminCandidatureShell({ active, children }: AdminCandidatureShel
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [popoverOpen]);
+
+  useEffect(() => {
+    void loadPendingFieldChangeCount();
+  }, [loadPendingFieldChangeCount]);
+
+  useAdminRealtimeRefresh({
+    token: auth?.token ?? "",
+    enabled: canManageFieldChanges,
+    shouldRefresh: (event) => {
+      const key = event.eventKey ?? "";
+      return key.startsWith("fcr.") || event.entityType === "FIELD_CHANGE_REQUEST";
+    },
+    onRefresh: () => loadPendingFieldChangeCount()
+  });
 
   useEffect(() => {
     return () => {
@@ -190,7 +221,11 @@ export function AdminCandidatureShell({ active, children }: AdminCandidatureShel
           <Link to="/admin/albo-a" className={navClass(active === "alboA")}><Users className="superadmin-nav-icon h-4 w-4" /> <span className="superadmin-nav-label">Fornitori (Albo A)</span></Link>
           <Link to="/admin/albo-b" className={navClass(active === "alboB")}><Building2 className="superadmin-nav-icon h-4 w-4" /> <span className="superadmin-nav-label">Aziende (Albo B)</span></Link>
           {resolved && adminRole !== "VIEWER" && (
-            <Link to="/admin/candidature" className={navClass(active === "candidature")}><ClipboardList className="superadmin-nav-icon h-4 w-4" /> <span className="superadmin-nav-label">Candidature</span></Link>
+            <Link to="/admin/candidature" className={navClass(active === "candidature")}>
+              <ClipboardList className="superadmin-nav-icon h-4 w-4" />
+              <span className="superadmin-nav-label">Candidature</span>
+              {pendingFieldChangeCount > 0 ? <span className="superadmin-nav-count">{pendingFieldChangeCount}</span> : null}
+            </Link>
           )}
           {resolved && (adminRole === "SUPER_ADMIN" || adminRole === "RESPONSABILE_ALBO") && (
             <Link to="/admin/invites" className={navClass(active === "inviti")}><MailPlus className="superadmin-nav-icon h-4 w-4" /> <span className="superadmin-nav-label">Inviti</span></Link>

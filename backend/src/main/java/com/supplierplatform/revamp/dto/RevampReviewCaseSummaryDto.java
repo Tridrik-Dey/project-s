@@ -25,7 +25,20 @@ public record RevampReviewCaseSummaryDto(
         LocalDateTime latestIntegrationSupplierRespondedAt,
         LocalDateTime updatedAt,
         String registryType,
-        String applicantDisplayName
+        String applicantDisplayName,
+        String reviewType,
+        UUID fieldChangeRequestId,
+        String fieldChangeSectionKey,
+        String fieldChangeStatus,
+        String fieldChangeBeforeValueJson,
+        String fieldChangeAfterValueJson,
+        UUID documentRenewalRequestId,
+        String documentRenewalStatus,
+        String documentRenewalSectionKey,
+        String documentRenewalDocumentType,
+        String documentRenewalDocumentLabel,
+        String documentRenewalOldAttachmentJson,
+        String documentRenewalNewAttachmentJson
 ) {
     public RevampReviewCaseSummaryDto(
             UUID id,
@@ -64,6 +77,19 @@ public record RevampReviewCaseSummaryDto(
                 null,
                 null,
                 updatedAt,
+                null,
+                null,
+                "APPLICATION",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null
         );

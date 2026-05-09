@@ -2,9 +2,13 @@ import { ChangeEvent, useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, CheckCircle, Info, Save } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
-import { answerRevampIntegrationRequest, getMyLatestRevampApplication, getRevampApplicationSections, saveRevampApplicationSection, type RevampSectionSnapshot } from "../../api/revampApplicationApi";
+import { getMyLatestRevampApplication, getRevampApplicationSections, saveRevampApplicationSection, type RevampSectionSnapshot } from "../../api/revampApplicationApi";
 import { loadRevampApplicationIdForRegistry, saveRevampApplicationIdForRegistry } from "../../utils/revampApplicationSession";
-import { clearRevampIntegrationEditSession, isRevampIntegrationEditFor } from "../../utils/revampIntegrationEditSession";
+import { clearRevampIntegrationEditSession, integrationEditHasAnyCode, isRevampIntegrationEditFor, loadRevampIntegrationEditSession } from "../../utils/revampIntegrationEditSession";
+import { completeRevampIntegrationEdit } from "../../utils/revampIntegrationCompletion";
+import { loadRevampFcrEditSession } from "../../utils/revampFcrEditSession";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
 
 const NAVY  = "#0f2a52";
 const GREEN = "#1a5c3a";
@@ -190,9 +194,32 @@ function SubLabel({ label, accent }: { label: string; accent: string }) {
   );
 }
 
-function SectionCard({ title, desc, accent, children }: { title: string; desc?: string; accent: string; children: React.ReactNode }) {
+function SectionCard({ title, desc, accent, className, children }: { title: string; desc?: string; accent: string; className?: string; children: React.ReactNode }) {
+  const fcrSession = loadRevampFcrEditSession();
+  const integrationSession = loadRevampIntegrationEditSession();
+  const automaticGroups = title.includes("Istruzione")
+    ? ["istruzione"]
+    : title.includes("Aree Tematiche")
+      ? ["competenze", "territorio", "lingue"]
+      : title.includes("Profilo Professionale")
+        ? ["istruzione", "servizi_offerti", "cert_specifiche"]
+        : [];
+  const integrationActive = integrationSession && automaticGroups.length
+    ? (
+        title.includes("Aree Tematiche")
+          ? integrationEditHasAnyCode(integrationSession, ["THEMATIC_SPECIFICATION"])
+          : title.includes("Profilo Professionale")
+            ? integrationEditHasAnyCode(integrationSession, ["THEMATIC_SPECIFICATION", "EXPERIENCE_CONSISTENCY"])
+            : false
+      )
+    : false;
+  const effectiveClassName = className ?? (integrationSession && automaticGroups.length
+    ? integrationActive ? "fcr-active-group" : "fcr-locked"
+    : fcrSession && automaticGroups.length
+    ? automaticGroups.includes(fcrSession.sectionKey) ? "fcr-active-group" : "fcr-locked"
+    : undefined);
   return (
-    <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", padding: "22px 26px", marginBottom: 16 }}>
+    <div className={effectiveClassName} style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", padding: "22px 26px", marginBottom: 16 }}>
       <div style={{ fontWeight: 700, fontSize: "1rem", color: accent, marginBottom: desc ? 4 : 14 }}>{title}</div>
       {desc && <p style={{ fontSize: "0.82rem", color: MUTED, margin: "0 0 16px", lineHeight: 1.5 }}>{desc}</p>}
       {children}
@@ -255,6 +282,7 @@ export function RevampStep3CompetenzePage() {
   const title = isA ? "Albo A — Professionisti" : "Albo B — Aziende";
   const registryType = isA ? "ALBO_A" : "ALBO_B";
   const integrationEdit = isRevampIntegrationEditFor(registryType, 3);
+  const fcr = useFcrEditMode();
   const subtitle = isDocente
     ? "Sezione 3A · Scheda Docente / Formatore"
     : "Sezione 3 · Profilo Professionale";
@@ -324,7 +352,7 @@ export function RevampStep3CompetenzePage() {
       if (s3.certB)             setCertB(s3.certB as string);
     }
 
-    const existingAppId = loadRevampApplicationIdForRegistry(registryType);
+    const existingAppId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
     if (existingAppId) {
       getRevampApplicationSections(existingAppId, auth.token).then(applyS3).catch(() => {});
       return;
@@ -349,7 +377,7 @@ export function RevampStep3CompetenzePage() {
   async function handleSaveDraft() {
     if (!auth?.token) return;
     try {
-      const appId = loadRevampApplicationIdForRegistry(registryType);
+      const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
       if (!appId) return;
       const areeChecked = AREE_TEMATICHE.filter(a => aree[a.id].checked).map(a => a.id);
       const draftPayload = JSON.stringify({
@@ -382,8 +410,47 @@ export function RevampStep3CompetenzePage() {
     clearErr("servizi");
   }
 
+  async function saveSectionProgrammatic() {
+    if (!auth?.token) throw new Error("Sessione scaduta. Effettua nuovamente il login.");
+    const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
+    if (!appId) throw new Error("Candidatura non trovata.");
+    const areeChecked = AREE_TEMATICHE.filter(a => aree[a.id].checked).map(a => a.id);
+    const frontendPayload = {
+      titoloStudio, ambitoStudio, annoConseg, certAbitazioni,
+      aree: areeChecked,
+      areaTerritoriale, lingue, lingueDocenza, strumenti, reti,
+      docenzaPA, consulenza: Array.from(consulenza),
+      titoloB, ambitoB, anniEsp, ordine, certB,
+      servizi: Array.from(servizi), altroServ,
+    };
+    if (isA && isDocente) {
+      await saveRevampApplicationSection(appId, "S3A", JSON.stringify({
+        ...frontendPayload,
+        thematicAreasCsv: areeChecked.join(","),
+        education: { highestTitle: titoloStudio, studyArea: ambitoStudio, graduationYear: annoConseg },
+        presentation: areaTerritoriale,
+      }), true, auth.token);
+      return;
+    }
+    if (isA) {
+      await saveRevampApplicationSection(appId, "S3B", JSON.stringify({
+        ...frontendPayload,
+        professionalOrder: ordine,
+        highestTitle: titoloB,
+        studyArea: ambitoB,
+        experienceBand: anniEsp,
+        services: Array.from(servizi),
+        hourlyRateRange: "",
+        territory: { regionsCsv: "", provincesCsv: "" },
+      }), sectionWasCompleted, auth.token);
+      return;
+    }
+    await saveRevampApplicationSection(appId, "S3", JSON.stringify(frontendPayload), true, auth.token);
+  }
+
   function validate(): Record<string, string> {
     const e: Record<string, string> = {};
+    if (integrationEdit) return e;
     if (isDocente) {
       if (!titoloStudio) e.titoloStudio = "Campo obbligatorio.";
       if (!ambitoStudio.trim()) e.ambitoStudio = "Campo obbligatorio.";
@@ -429,7 +496,7 @@ export function RevampStep3CompetenzePage() {
     let savedAppId: string | null = null;
     if (auth?.token) {
       try {
-        const appId = loadRevampApplicationIdForRegistry(registryType);
+        const appId = loadRevampFcrEditSession()?.applicationId ?? loadRevampApplicationIdForRegistry(registryType);
         if (appId) {
           savedAppId = appId;
           if (isA && isDocente) {
@@ -466,7 +533,7 @@ export function RevampStep3CompetenzePage() {
     }
     if (integrationEdit && auth?.token && savedAppId) {
       try {
-        await answerRevampIntegrationRequest(savedAppId, auth.token);
+        await completeRevampIntegrationEdit(savedAppId, auth.token, integrationEdit);
         clearRevampIntegrationEditSession();
       } catch {
         window.alert("Invio integrazione non riuscito. Controlla i dati e riprova.");
@@ -485,9 +552,9 @@ export function RevampStep3CompetenzePage() {
   return (
     <div style={{ margin: "-1rem", background: "#f0f4f8", minHeight: "100%" }}>
       <PageHeader title={title} subtitle={subtitle} savedAt={savedAt} onSave={() => void handleSaveDraft()} />
-      {integrationEdit ? (
+      {integrationEdit || fcr.active ? (
         <div style={{ background: "#eff6ff", borderBottom: "1px solid #bfdbfe", padding: "12px 40px", color: "#174f82", fontSize: "0.86rem", fontWeight: 700 }}>
-          Integrazione richiesta - Correggi la sezione Competenze, salva e invia la risposta.
+          {fcr.active ? "Richiesta di modifica - Aggiorna solo il gruppo sbloccato, poi salva e invia." : "Integrazione richiesta - Correggi la sezione Competenze, salva e invia la risposta."}
         </div>
       ) : (
         <StepBar active={2} accent={accent} />
@@ -709,7 +776,7 @@ export function RevampStep3CompetenzePage() {
       </div>
 
       {/* ── Bottom nav ── */}
-      <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 36px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
+      {!fcr.active && <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 36px", position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 10 }}>
         <Link className="wizard-nav-button wizard-nav-button-prev" to={integrationEdit?.returnPath ?? `/apply/${registryParam}/step/2`} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: "#fff", border: `1.5px solid ${accent}`, borderRadius: 6, fontWeight: 600, fontSize: "0.84rem", color: accent, textDecoration: "none" }}>
           <ArrowLeft size={14} /> {integrationEdit ? "Torna alla richiesta" : "Sezione precedente"}
         </Link>
@@ -726,7 +793,8 @@ export function RevampStep3CompetenzePage() {
         <button className="wizard-nav-button wizard-nav-button-next" type="button" onClick={handleNext} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 18px", background: accent, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, fontSize: "0.84rem", cursor: "pointer" }}>
           {integrationEdit ? "Salva e invia integrazione" : "Sezione successiva"} <ArrowRight size={14} />
         </button>
-      </div>
+      </div>}
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
     </div>
   );
 }

@@ -23,6 +23,19 @@ export interface AdminReviewCaseSummary {
   updatedAt: string;
   registryType?: string | null;
   applicantDisplayName?: string | null;
+  reviewType?: "APPLICATION" | "FIELD_CHANGE" | "DOCUMENT_RENEWAL" | string | null;
+  fieldChangeRequestId?: string | null;
+  fieldChangeSectionKey?: string | null;
+  fieldChangeStatus?: string | null;
+  fieldChangeBeforeValueJson?: string | null;
+  fieldChangeAfterValueJson?: string | null;
+  documentRenewalRequestId?: string | null;
+  documentRenewalStatus?: string | null;
+  documentRenewalSectionKey?: string | null;
+  documentRenewalDocumentType?: string | null;
+  documentRenewalDocumentLabel?: string | null;
+  documentRenewalOldAttachmentJson?: string | null;
+  documentRenewalNewAttachmentJson?: string | null;
 }
 
 export interface AdminIntegrationRequestSummary {

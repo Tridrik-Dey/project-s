@@ -249,6 +249,7 @@ class RevampReviewControllerContractTest {
                 LocalDateTime.now().plusDays(3),
                 "Missing DURC",
                 objectMapper.readTree("{\"items\":[{\"code\":\"ID_DOCUMENT\"}]}"),
+                objectMapper.readTree("{\"completedItemCodes\":[]}"),
                 LocalDateTime.now()
         );
         when(reviewWorkflowService.getLatestIntegrationRequest(eq(caseId))).thenReturn(dto);
@@ -301,4 +302,3 @@ class RevampReviewControllerContractTest {
                 .andExpect(jsonPath("$.data.verificationOutcome").value("COMPLIANT"));
     }
 }
-

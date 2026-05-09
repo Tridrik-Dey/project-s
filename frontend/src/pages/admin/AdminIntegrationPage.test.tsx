@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AdminIntegrationPage } from "./AdminIntegrationPage";
 
 const getSummaryMock = vi.fn();
+const getSectionsMock = vi.fn();
 const getHistoryMock = vi.fn();
 const getLatestIntegrationMock = vi.fn();
 const requestIntegrationMock = vi.fn();
@@ -27,7 +28,8 @@ vi.mock("../../hooks/useAdminGovernanceRole", () => ({
 }));
 
 vi.mock("../../api/revampApplicationApi", () => ({
-  getRevampApplicationSummary: (...args: unknown[]) => getSummaryMock(...args)
+  getRevampApplicationSummary: (...args: unknown[]) => getSummaryMock(...args),
+  getRevampApplicationSections: (...args: unknown[]) => getSectionsMock(...args)
 }));
 
 vi.mock("../../api/adminReviewApi", () => ({
@@ -51,11 +53,33 @@ function renderPage() {
 describe("AdminIntegrationPage", () => {
   beforeEach(() => {
     getSummaryMock.mockReset();
+    getSectionsMock.mockReset();
     getHistoryMock.mockReset();
     getLatestIntegrationMock.mockReset();
     requestIntegrationMock.mockReset();
     assignCaseMock.mockReset();
     getLatestIntegrationMock.mockResolvedValue(null);
+    getSectionsMock.mockResolvedValue([
+      {
+        id: "section-s4",
+        applicationId: "9e7775d9-9719-4bb7-9d8e-1f0ab1e4b2f6",
+        sectionKey: "S4",
+        sectionVersion: 1,
+        completed: true,
+        payloadJson: JSON.stringify({
+          attachments: [
+            {
+              documentType: "CV",
+              fileName: "cv-gaia.pdf",
+              storageKey: "upload://cv-gaia.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 1000
+            }
+          ]
+        }),
+        updatedAt: "2026-04-15T10:00:00Z"
+      }
+    ]);
   });
 
   it("updates live email preview from selected integration items", async () => {
@@ -84,13 +108,13 @@ describe("AdminIntegrationPage", () => {
     renderPage();
 
     await screen.findByText("Cosa deve correggere o caricare");
-    await user.click(screen.getByRole("checkbox", { name: /Documento di identita/i }));
+    await user.click(screen.getByRole("checkbox", { name: /Curriculum aggiornato/i }));
     const firstEnabledInstruction = screen.getAllByPlaceholderText("Aggiungi istruzione specifica").find((input) => !(input as HTMLInputElement).disabled);
     if (!firstEnabledInstruction) throw new Error("Enabled instruction input not found");
     await user.type(firstEnabledInstruction, "Inviare fronte e retro.");
     await user.type(screen.getByLabelText("Messaggio introduttivo *"), "Integrare i documenti mancanti.");
 
-    expect(screen.getByText(/Documento di identita: Inviare fronte e retro/i)).toBeInTheDocument();
+    expect(screen.getByText(/Curriculum aggiornato: Inviare fronte e retro/i)).toBeInTheDocument();
   });
 
   it("submits selected items as requestedItemsJson payload", async () => {
@@ -126,7 +150,7 @@ describe("AdminIntegrationPage", () => {
     renderPage();
 
     await screen.findByText("Cosa deve correggere o caricare");
-    await user.click(screen.getByRole("checkbox", { name: /Documento di identita/i }));
+    await user.click(screen.getByRole("checkbox", { name: /Curriculum aggiornato/i }));
     const firstEnabledInstruction = screen.getAllByPlaceholderText("Aggiungi istruzione specifica").find((input) => !(input as HTMLInputElement).disabled);
     if (!firstEnabledInstruction) throw new Error("Enabled instruction input not found");
     await user.type(firstEnabledInstruction, "Upload PDF leggibile.");
@@ -143,7 +167,7 @@ describe("AdminIntegrationPage", () => {
     expect(args[1]).toBe("admin-token");
     expect(args[2].dueAt).toBe("2026-04-30T23:59:00");
     expect(args[2].message).toContain("Integrare entro la scadenza");
-    expect(args[2].requestedItemsJson).toContain("ID_DOCUMENT");
+    expect(args[2].requestedItemsJson).toContain("CV");
     expect(args[2].requestedItemsJson).toContain("Upload PDF leggibile.");
     expect(await screen.findByText("Review destination")).toBeInTheDocument();
   });
@@ -176,7 +200,7 @@ describe("AdminIntegrationPage", () => {
       dueAt: "2026-04-30T00:00:00",
       requestMessage: "Integrare documentazione.",
       requestedItemsJson: {
-        items: [{ code: "ID_DOCUMENT", instruction: "Inviare documento fronte/retro." }]
+        items: [{ code: "CV", instruction: "Inviare documento aggiornato." }]
       },
       updatedAt: "2026-04-16T10:00:00Z"
     });

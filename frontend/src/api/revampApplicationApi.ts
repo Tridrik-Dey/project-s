@@ -44,6 +44,7 @@ export interface RevampIntegrationRequestSummary {
   dueAt: string;
   requestMessage: string;
   requestedItemsJson: unknown;
+  supplierResponseJson?: unknown;
   updatedAt: string;
 }
 
@@ -221,6 +222,18 @@ export function answerRevampIntegrationRequest(
 ): Promise<RevampApplicationSummary> {
   return apiRequest<RevampApplicationSummary>(
     `${BASE}/${applicationId}/integration-response`,
+    { method: "POST" },
+    token
+  );
+}
+
+export function completeRevampIntegrationItem(
+  applicationId: string,
+  itemCode: string,
+  token: string
+): Promise<RevampApplicationSummary> {
+  return apiRequest<RevampApplicationSummary>(
+    `${BASE}/${applicationId}/integration-response/items/${encodeURIComponent(itemCode)}/complete`,
     { method: "POST" },
     token
   );

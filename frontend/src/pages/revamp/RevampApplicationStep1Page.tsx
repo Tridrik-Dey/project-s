@@ -13,6 +13,8 @@ import { HttpError } from "../../api/http";
 import { useAuth } from "../../auth/AuthContext";
 import { useI18n } from "../../i18n/I18nContext";
 import { saveRevampApplicationSession } from "../../utils/revampApplicationSession";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -161,6 +163,7 @@ export function RevampApplicationStep1Page() {
   const initializedRef = useRef(false);
   const { applicationId } = useParams();
   const { auth } = useAuth();
+  const fcr = useFcrEditMode();
   const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -564,6 +567,14 @@ export function RevampApplicationStep1Page() {
     await persistSection("manual");
   }
 
+  async function saveSectionProgrammatic() {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    await persistSection("manual");
+  }
+
   if (!applicationId) {
     return <Navigate to="/apply" replace />;
   }
@@ -601,7 +612,9 @@ export function RevampApplicationStep1Page() {
       <div className="panel revamp-step-header">
         <h2>{registryType === "ALBO_A" ? t("revamp.step1.title.alboA") : t("revamp.step1.title.alboB")}</h2>
         <p className="subtle">
-          {t("revamp.step.common.subtitle", { id: applicationId, state: saveLabel })}
+          {fcr.active
+            ? `Candidatura ${applicationId} - Richiesta di modifica: ${saveLabel}`
+            : t("revamp.step.common.subtitle", { id: applicationId, state: saveLabel })}
         </p>
       </div>
 
@@ -609,47 +622,62 @@ export function RevampApplicationStep1Page() {
         {registryType === "ALBO_A" ? (
           <>
             <h3 className="revamp-step-subtitle"><UserRound className="h-4 w-4" /> {t("revamp.step1.alboA.sectionTitle")}</h3>
-            <div className="home-step-card">
-              <div className="home-step-head">
-                <span className="home-step-index">P</span>
-                <h4>Foto profilo (opzionale)</h4>
-              </div>
-              <p className="subtle">Formati supportati: JPG, PNG, WEBP. Dimensione massima: 2MB.</p>
-              <div className="revamp-step-actions">
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(e) => void onProfilePhotoChange(e)}
-                />
-                {alboA.profilePhotoAttachment ? (
-                  <button type="button" className="home-btn home-btn-secondary" onClick={onRemoveProfilePhoto}>
-                    <Trash2 className="h-4 w-4" />
-                    Rimuovi foto
-                  </button>
-                ) : null}
-              </div>
-              {alboA.profilePhotoAttachment ? (
-                <div className="home-step-card" style={{ marginTop: "0.6rem" }}>
-                  {profilePhotoPreviewUrl ? (
-                    <img
-                      src={profilePhotoPreviewUrl}
-                      alt="Anteprima foto profilo"
-                      style={{ width: "120px", height: "120px", objectFit: "cover", borderRadius: "10px", border: "1px solid #c8d8e7" }}
-                    />
-                  ) : (
-                    <div style={{ width: "120px", height: "120px", borderRadius: "10px", border: "1px solid #c8d8e7", display: "grid", placeItems: "center", color: "#537092" }}>
-                      Foto caricata
-                    </div>
-                  )}
-                  <p className="subtle" style={{ marginTop: "0.4rem" }}>
-                    <ImagePlus className="h-4 w-4" /> {alboA.profilePhotoAttachment.fileName || "Immagine caricata"}
-                  </p>
+
+            {/* ── foto_profilo ── */}
+            <fieldset
+              className={`fcr-group${fcr.active ? (fcr.isLocked("foto_profilo") ? " fcr-locked" : " fcr-active-group") : ""}`}
+              disabled={fcr.active && fcr.isLocked("foto_profilo")}
+            >
+              <legend className="fcr-group-legend">Foto profilo</legend>
+              <div className="home-step-card">
+                <div className="home-step-head">
+                  <span className="home-step-index">P</span>
+                  <h4>Foto profilo (opzionale)</h4>
                 </div>
-              ) : null}
-              {errors.profilePhoto ? <p className="error">{errors.profilePhoto}</p> : null}
-            </div>
-            <div className="grid-form">
+                <p className="subtle">Formati supportati: JPG, PNG, WEBP. Dimensione massima: 2MB.</p>
+                <div className="revamp-step-actions">
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(e) => void onProfilePhotoChange(e)}
+                  />
+                  {alboA.profilePhotoAttachment ? (
+                    <button type="button" className="home-btn home-btn-secondary" onClick={onRemoveProfilePhoto}>
+                      <Trash2 className="h-4 w-4" />
+                      Rimuovi foto
+                    </button>
+                  ) : null}
+                </div>
+                {alboA.profilePhotoAttachment ? (
+                  <div className="home-step-card" style={{ marginTop: "0.6rem" }}>
+                    {profilePhotoPreviewUrl ? (
+                      <img
+                        src={profilePhotoPreviewUrl}
+                        alt="Anteprima foto profilo"
+                        style={{ width: "120px", height: "120px", objectFit: "cover", borderRadius: "10px", border: "1px solid #c8d8e7" }}
+                      />
+                    ) : (
+                      <div style={{ width: "120px", height: "120px", borderRadius: "10px", border: "1px solid #c8d8e7", display: "grid", placeItems: "center", color: "#537092" }}>
+                        Foto caricata
+                      </div>
+                    )}
+                    <p className="subtle" style={{ marginTop: "0.4rem" }}>
+                      <ImagePlus className="h-4 w-4" /> {alboA.profilePhotoAttachment.fileName || "Immagine caricata"}
+                    </p>
+                  </div>
+                ) : null}
+                {errors.profilePhoto ? <p className="error">{errors.profilePhoto}</p> : null}
+              </div>
+            </fieldset>
+
+            {/* ── dati_personali ── */}
+            <fieldset
+              className={`fcr-group${fcr.active ? (fcr.isLocked("dati_personali") ? " fcr-locked" : " fcr-active-group") : ""}`}
+              disabled={fcr.active && fcr.isLocked("dati_personali")}
+            >
+              <legend className="fcr-group-legend">Dati anagrafici</legend>
+              <div className="grid-form">
               <label className={`floating-field ${alboA.firstName ? "has-value" : ""}`}>
                 <input
                   className="floating-input auth-input"
@@ -699,192 +727,115 @@ export function RevampApplicationStep1Page() {
                 />
                 <span className="floating-field-label">{t("revamp.step1.field.birthPlace")}</span>
               </label>
-              <label className={`floating-field ${alboA.taxCode ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboA.taxCode}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, taxCode: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.taxCode")}</span>
-              </label>
-              <label className={`floating-field ${alboA.vatNumber ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboA.vatNumber}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, vatNumber: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.vatNumberOptional")}</span>
-              </label>
-              <label className={`floating-field ${alboA.taxRegime ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboA.taxRegime}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, taxRegime: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.taxRegimeOptional")}</span>
-              </label>
-              <label className={`floating-field ${alboA.addressLine ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboA.addressLine}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, addressLine: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.addressLine")}</span>
-              </label>
-              <label className={`floating-field ${alboA.phone ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboA.phone}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, phone: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.phone")}</span>
-              </label>
-              <label className={`floating-field ${alboA.secondaryPhone ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboA.secondaryPhone}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, secondaryPhone: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.secondaryPhoneOptional")}</span>
-              </label>
-              <label className="floating-field has-value">
-                <input
-                  className="floating-input auth-input input-field-locked"
-                  type="email"
-                  value={alboA.email}
-                  disabled
-                  placeholder=" "
-                  onChange={() => undefined}
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.email")}</span>
-              </label>
-              <label className={`floating-field ${alboA.secondaryEmail ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  type="email"
-                  value={alboA.secondaryEmail}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, secondaryEmail: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.secondaryEmailOptional")}</span>
-              </label>
-              <label className={`floating-field ${alboA.pec ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  type="email"
-                  value={alboA.pec}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, pec: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.pecOptional")}</span>
-              </label>
-              <label className={`floating-field ${alboA.website ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboA.website}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, website: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.websiteOptional")}</span>
-              </label>
-              <label className={`floating-field ${alboA.linkedin ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboA.linkedin}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, linkedin: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.linkedinOptional")}</span>
-              </label>
-              <label className={`floating-field ${alboA.city ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboA.city}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, city: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.city")}</span>
-              </label>
-              <label className={`floating-field ${alboA.province ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboA.province}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, province: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.province")}</span>
-              </label>
-              <label className={`floating-field ${alboA.postalCode ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboA.postalCode}
-                  onChange={(e) => {
-                    setAlboA((prev) => ({ ...prev, postalCode: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.postalCode")}</span>
-              </label>
             </div>
+            </fieldset>
+
+            {/* ── dati_fiscali ── */}
+            <fieldset
+              className={`fcr-group${fcr.active ? (fcr.isLocked("dati_fiscali") ? " fcr-locked" : " fcr-active-group") : ""}`}
+              disabled={fcr.active && fcr.isLocked("dati_fiscali")}
+            >
+              <legend className="fcr-group-legend">Dati fiscali</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${alboA.taxCode ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboA.taxCode} onChange={(e) => { setAlboA((prev) => ({ ...prev, taxCode: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.taxCode")}</span>
+                </label>
+                <label className={`floating-field ${alboA.vatNumber ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboA.vatNumber} onChange={(e) => { setAlboA((prev) => ({ ...prev, vatNumber: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.vatNumberOptional")}</span>
+                </label>
+                <label className={`floating-field ${alboA.taxRegime ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboA.taxRegime} onChange={(e) => { setAlboA((prev) => ({ ...prev, taxRegime: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.taxRegimeOptional")}</span>
+                </label>
+              </div>
+              {errors.taxCode ? <p className="error">{errors.taxCode}</p> : null}
+            </fieldset>
+
+            {/* ── indirizzo ── */}
+            <fieldset
+              className={`fcr-group${fcr.active ? (fcr.isLocked("indirizzo") ? " fcr-locked" : " fcr-active-group") : ""}`}
+              disabled={fcr.active && fcr.isLocked("indirizzo")}
+            >
+              <legend className="fcr-group-legend">Indirizzo professionale</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${alboA.addressLine ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboA.addressLine} onChange={(e) => { setAlboA((prev) => ({ ...prev, addressLine: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.addressLine")}</span>
+                </label>
+                <label className={`floating-field ${alboA.city ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboA.city} onChange={(e) => { setAlboA((prev) => ({ ...prev, city: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.city")}</span>
+                </label>
+                <label className={`floating-field ${alboA.province ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboA.province} onChange={(e) => { setAlboA((prev) => ({ ...prev, province: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.province")}</span>
+                </label>
+                <label className={`floating-field ${alboA.postalCode ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboA.postalCode} onChange={(e) => { setAlboA((prev) => ({ ...prev, postalCode: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.postalCode")}</span>
+                </label>
+              </div>
+              {errors.addressLine ? <p className="error">{errors.addressLine}</p> : null}
+              {errors.city ? <p className="error">{errors.city}</p> : null}
+              {errors.province ? <p className="error">{errors.province}</p> : null}
+              {errors.postalCode ? <p className="error">{errors.postalCode}</p> : null}
+            </fieldset>
+
+            {/* ── contatti ── */}
+            <fieldset
+              className={`fcr-group${fcr.active ? (fcr.isLocked("contatti") ? " fcr-locked" : " fcr-active-group") : ""}`}
+              disabled={fcr.active && fcr.isLocked("contatti")}
+            >
+              <legend className="fcr-group-legend">Contatti</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${alboA.phone ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboA.phone} onChange={(e) => { setAlboA((prev) => ({ ...prev, phone: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.phone")}</span>
+                </label>
+                <label className={`floating-field ${alboA.secondaryPhone ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboA.secondaryPhone} onChange={(e) => { setAlboA((prev) => ({ ...prev, secondaryPhone: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.secondaryPhoneOptional")}</span>
+                </label>
+                <label className="floating-field has-value">
+                  <input className="floating-input auth-input input-field-locked" type="email" value={alboA.email} disabled placeholder=" " onChange={() => undefined} />
+                  <span className="floating-field-label">{t("revamp.step1.field.email")}</span>
+                </label>
+                <label className={`floating-field ${alboA.secondaryEmail ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" type="email" value={alboA.secondaryEmail} onChange={(e) => { setAlboA((prev) => ({ ...prev, secondaryEmail: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.secondaryEmailOptional")}</span>
+                </label>
+                <label className={`floating-field ${alboA.pec ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" type="email" value={alboA.pec} onChange={(e) => { setAlboA((prev) => ({ ...prev, pec: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.pecOptional")}</span>
+                </label>
+                <label className={`floating-field ${alboA.website ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboA.website} onChange={(e) => { setAlboA((prev) => ({ ...prev, website: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.websiteOptional")}</span>
+                </label>
+                <label className={`floating-field ${alboA.linkedin ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboA.linkedin} onChange={(e) => { setAlboA((prev) => ({ ...prev, linkedin: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.linkedinOptional")}</span>
+                </label>
+              </div>
+              {errors.phone ? <p className="error">{errors.phone}</p> : null}
+              {errors.email ? <p className="error">{errors.email}</p> : null}
+            </fieldset>
+
             {errors.firstName ? <p className="error">{errors.firstName}</p> : null}
             {errors.lastName ? <p className="error">{errors.lastName}</p> : null}
             {errors.birthDate ? <p className="error">{errors.birthDate}</p> : null}
             {errors.birthPlace ? <p className="error">{errors.birthPlace}</p> : null}
-            {errors.taxCode ? <p className="error">{errors.taxCode}</p> : null}
-            {errors.addressLine ? <p className="error">{errors.addressLine}</p> : null}
-            {errors.phone ? <p className="error">{errors.phone}</p> : null}
-            {errors.email ? <p className="error">{errors.email}</p> : null}
-            {errors.city ? <p className="error">{errors.city}</p> : null}
-            {errors.province ? <p className="error">{errors.province}</p> : null}
-            {errors.postalCode ? <p className="error">{errors.postalCode}</p> : null}
           </>
         ) : (
           <>
             <h3 className="revamp-step-subtitle"><Building2 className="h-4 w-4" /> {t("revamp.step1.alboB.sectionTitle")}</h3>
-            <div className="grid-form">
+
+            {/* ── dati_aziendali ── */}
+            <fieldset className={`fcr-group${fcr.active ? (fcr.isLocked("dati_aziendali") ? " fcr-locked" : " fcr-active-group") : ""}`} disabled={fcr.active && fcr.isLocked("dati_aziendali")}>
+              <legend className="fcr-group-legend">Dati aziendali</legend>
+              <div className="grid-form">
               <label className={`floating-field ${alboB.companyName ? "has-value" : ""}`}>
                 <input
                   className="floating-input auth-input"
@@ -919,350 +870,191 @@ export function RevampApplicationStep1Page() {
                 </select>
                 <span className="floating-field-label">Forma giuridica *</span>
               </label>
-              <label className={`floating-field ${alboB.vatNumber ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.vatNumber}
-                  onChange={(e) => {
-                    setAlboB((prev) => ({ ...prev, vatNumber: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.vatNumber")}</span>
-              </label>
-              <label className={`floating-field ${alboB.taxCodeIfDifferent ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.taxCodeIfDifferent}
-                  onChange={(e) => {
-                    setAlboB((prev) => ({ ...prev, taxCodeIfDifferent: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Codice fiscale (se diverso)</span>
-              </label>
-              <label className={`floating-field ${alboB.reaNumber ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.reaNumber}
-                  onChange={(e) => {
-                    setAlboB((prev) => ({ ...prev, reaNumber: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.reaNumber")}</span>
-              </label>
-              <label className={`floating-field ${alboB.cciaaProvince ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.cciaaProvince}
-                  onChange={(e) => {
-                    setAlboB((prev) => ({ ...prev, cciaaProvince: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.cciaaProvince")}</span>
-              </label>
-              <label className={`floating-field ${alboB.incorporationDate ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  type="month"
-                  value={alboB.incorporationDate}
-                  onChange={(e) => {
-                    setAlboB((prev) => ({ ...prev, incorporationDate: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">{t("revamp.step1.field.incorporationDate")}</span>
-              </label>
-              <label className={`floating-field ${alboB.legalAddress.street ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.legalAddress.street}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, legalAddress: { ...prev.legalAddress, street: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Sede legale - indirizzo *</span>
-              </label>
-              <label className={`floating-field ${alboB.legalAddress.city ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.legalAddress.city}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, legalAddress: { ...prev.legalAddress, city: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Sede legale - citta *</span>
-              </label>
-              <label className={`floating-field ${alboB.legalAddress.cap ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.legalAddress.cap}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, legalAddress: { ...prev.legalAddress, cap: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Sede legale - CAP *</span>
-              </label>
-              <label className={`floating-field ${alboB.legalAddress.province ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.legalAddress.province}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, legalAddress: { ...prev.legalAddress, province: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Sede legale - provincia *</span>
-              </label>
-              <label className={`floating-field ${alboB.operationalHeadquarter.street ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.operationalHeadquarter.street}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, operationalHeadquarter: { ...prev.operationalHeadquarter, street: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Sede operativa - indirizzo</span>
-              </label>
-              <label className={`floating-field ${alboB.operationalHeadquarter.city ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.operationalHeadquarter.city}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, operationalHeadquarter: { ...prev.operationalHeadquarter, city: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Sede operativa - citta</span>
-              </label>
-              <label className={`floating-field ${alboB.operationalHeadquarter.cap ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.operationalHeadquarter.cap}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, operationalHeadquarter: { ...prev.operationalHeadquarter, cap: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Sede operativa - CAP</span>
-              </label>
-              <label className={`floating-field ${alboB.operationalHeadquarter.province ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.operationalHeadquarter.province}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, operationalHeadquarter: { ...prev.operationalHeadquarter, province: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Sede operativa - provincia</span>
-              </label>
-              <label className="floating-field has-value">
-                <input
-                  className="floating-input auth-input input-field-locked"
-                  type="email"
-                  value={alboB.institutionalEmail}
-                  disabled
-                  placeholder=" "
-                  onChange={() => undefined}
-                />
-                <span className="floating-field-label">Email istituzionale *</span>
-              </label>
-              <label className={`floating-field ${alboB.pec ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  type="email"
-                  value={alboB.pec}
-                  onChange={(e) => {
-                    setAlboB((prev) => ({ ...prev, pec: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">PEC</span>
-              </label>
-              <label className={`floating-field ${alboB.phone ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.phone}
-                  onChange={(e) => {
-                    setAlboB((prev) => ({ ...prev, phone: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Telefono *</span>
-              </label>
-              <label className={`floating-field ${alboB.website ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.website}
-                  onChange={(e) => {
-                    setAlboB((prev) => ({ ...prev, website: e.target.value }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Sito web</span>
-              </label>
-              <label className={`floating-field ${alboB.legalRepresentative.name ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.legalRepresentative.name}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, legalRepresentative: { ...prev.legalRepresentative, name: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Legale rappresentante - nome *</span>
-              </label>
-              <label className={`floating-field ${alboB.legalRepresentative.taxCode ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.legalRepresentative.taxCode}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, legalRepresentative: { ...prev.legalRepresentative, taxCode: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Legale rappresentante - codice fiscale *</span>
-              </label>
-              <label className={`floating-field ${alboB.legalRepresentative.role ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.legalRepresentative.role}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, legalRepresentative: { ...prev.legalRepresentative, role: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Legale rappresentante - ruolo *</span>
-              </label>
-              <label className={`floating-field ${alboB.operationalContact.name ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.operationalContact.name}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, operationalContact: { ...prev.operationalContact, name: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Referente operativo - nome *</span>
-              </label>
-              <label className={`floating-field ${alboB.operationalContact.role ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.operationalContact.role}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, operationalContact: { ...prev.operationalContact, role: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Referente operativo - ruolo</span>
-              </label>
-              <label className={`floating-field ${alboB.operationalContact.email ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  type="email"
-                  value={alboB.operationalContact.email}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, operationalContact: { ...prev.operationalContact, email: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Referente operativo - email *</span>
-              </label>
-              <label className={`floating-field ${alboB.operationalContact.phone ? "has-value" : ""}`}>
-                <input
-                  className="floating-input auth-input"
-                  value={alboB.operationalContact.phone}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setAlboB((prev) => ({ ...prev, operationalContact: { ...prev.operationalContact, phone: value } }));
-                    markDirty();
-                  }}
-                  placeholder=" "
-                />
-                <span className="floating-field-label">Referente operativo - telefono *</span>
-              </label>
             </div>
             {errors.companyName ? <p className="error">{errors.companyName}</p> : null}
             {errors.legalForm ? <p className="error">{errors.legalForm}</p> : null}
-            {errors.vatNumber ? <p className="error">{errors.vatNumber}</p> : null}
-            {errors.reaNumber ? <p className="error">{errors.reaNumber}</p> : null}
-            {errors.cciaaProvince ? <p className="error">{errors.cciaaProvince}</p> : null}
-            {errors.incorporationDate ? <p className="error">{errors.incorporationDate}</p> : null}
-            {errors.legalAddressStreet ? <p className="error">{errors.legalAddressStreet}</p> : null}
-            {errors.legalAddressCity ? <p className="error">{errors.legalAddressCity}</p> : null}
-            {errors.legalAddressCap ? <p className="error">{errors.legalAddressCap}</p> : null}
-            {errors.legalAddressProvince ? <p className="error">{errors.legalAddressProvince}</p> : null}
-            {errors.institutionalEmail ? <p className="error">{errors.institutionalEmail}</p> : null}
-            {errors.phone ? <p className="error">{errors.phone}</p> : null}
-            {errors.legalRepresentativeName ? <p className="error">{errors.legalRepresentativeName}</p> : null}
-            {errors.legalRepresentativeTaxCode ? <p className="error">{errors.legalRepresentativeTaxCode}</p> : null}
-            {errors.legalRepresentativeRole ? <p className="error">{errors.legalRepresentativeRole}</p> : null}
-            {errors.operationalContactName ? <p className="error">{errors.operationalContactName}</p> : null}
-            {errors.operationalContactEmail ? <p className="error">{errors.operationalContactEmail}</p> : null}
-            {errors.operationalContactPhone ? <p className="error">{errors.operationalContactPhone}</p> : null}
+            </fieldset>
+
+            {/* ── identificativi ── */}
+            <fieldset className={`fcr-group${fcr.active ? (fcr.isLocked("identificativi") ? " fcr-locked" : " fcr-active-group") : ""}`} disabled={fcr.active && fcr.isLocked("identificativi")}>
+              <legend className="fcr-group-legend">Identificativi fiscali</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${alboB.vatNumber ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.vatNumber} onChange={(e) => { setAlboB((prev) => ({ ...prev, vatNumber: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.vatNumber")}</span>
+                </label>
+                <label className={`floating-field ${alboB.taxCodeIfDifferent ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.taxCodeIfDifferent} onChange={(e) => { setAlboB((prev) => ({ ...prev, taxCodeIfDifferent: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Codice fiscale (se diverso)</span>
+                </label>
+                <label className={`floating-field ${alboB.reaNumber ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.reaNumber} onChange={(e) => { setAlboB((prev) => ({ ...prev, reaNumber: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.reaNumber")}</span>
+                </label>
+                <label className={`floating-field ${alboB.cciaaProvince ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.cciaaProvince} onChange={(e) => { setAlboB((prev) => ({ ...prev, cciaaProvince: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.cciaaProvince")}</span>
+                </label>
+                <label className={`floating-field ${alboB.incorporationDate ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" type="month" value={alboB.incorporationDate} onChange={(e) => { setAlboB((prev) => ({ ...prev, incorporationDate: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">{t("revamp.step1.field.incorporationDate")}</span>
+                </label>
+              </div>
+              {errors.vatNumber ? <p className="error">{errors.vatNumber}</p> : null}
+              {errors.reaNumber ? <p className="error">{errors.reaNumber}</p> : null}
+              {errors.cciaaProvince ? <p className="error">{errors.cciaaProvince}</p> : null}
+              {errors.incorporationDate ? <p className="error">{errors.incorporationDate}</p> : null}
+            </fieldset>
+
+            {/* ── sede_legale ── */}
+            <fieldset className={`fcr-group${fcr.active ? (fcr.isLocked("sede_legale") ? " fcr-locked" : " fcr-active-group") : ""}`} disabled={fcr.active && fcr.isLocked("sede_legale")}>
+              <legend className="fcr-group-legend">Sede legale</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${alboB.legalAddress.street ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.legalAddress.street} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, legalAddress: { ...prev.legalAddress, street: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Sede legale - indirizzo *</span>
+                </label>
+                <label className={`floating-field ${alboB.legalAddress.city ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.legalAddress.city} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, legalAddress: { ...prev.legalAddress, city: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Sede legale - città *</span>
+                </label>
+                <label className={`floating-field ${alboB.legalAddress.cap ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.legalAddress.cap} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, legalAddress: { ...prev.legalAddress, cap: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Sede legale - CAP *</span>
+                </label>
+                <label className={`floating-field ${alboB.legalAddress.province ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.legalAddress.province} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, legalAddress: { ...prev.legalAddress, province: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Sede legale - provincia *</span>
+                </label>
+              </div>
+              {errors.legalAddressStreet ? <p className="error">{errors.legalAddressStreet}</p> : null}
+              {errors.legalAddressCity ? <p className="error">{errors.legalAddressCity}</p> : null}
+              {errors.legalAddressCap ? <p className="error">{errors.legalAddressCap}</p> : null}
+              {errors.legalAddressProvince ? <p className="error">{errors.legalAddressProvince}</p> : null}
+            </fieldset>
+
+            {/* ── sede_operativa ── */}
+            <fieldset className={`fcr-group${fcr.active ? (fcr.isLocked("sede_operativa") ? " fcr-locked" : " fcr-active-group") : ""}`} disabled={fcr.active && fcr.isLocked("sede_operativa")}>
+              <legend className="fcr-group-legend">Sede operativa</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${alboB.operationalHeadquarter.street ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.operationalHeadquarter.street} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, operationalHeadquarter: { ...prev.operationalHeadquarter, street: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Sede operativa - indirizzo</span>
+                </label>
+                <label className={`floating-field ${alboB.operationalHeadquarter.city ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.operationalHeadquarter.city} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, operationalHeadquarter: { ...prev.operationalHeadquarter, city: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Sede operativa - città</span>
+                </label>
+                <label className={`floating-field ${alboB.operationalHeadquarter.cap ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.operationalHeadquarter.cap} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, operationalHeadquarter: { ...prev.operationalHeadquarter, cap: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Sede operativa - CAP</span>
+                </label>
+                <label className={`floating-field ${alboB.operationalHeadquarter.province ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.operationalHeadquarter.province} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, operationalHeadquarter: { ...prev.operationalHeadquarter, province: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Sede operativa - provincia</span>
+                </label>
+              </div>
+            </fieldset>
+
+            {/* ── contatti_inst ── */}
+            <fieldset className={`fcr-group${fcr.active ? (fcr.isLocked("contatti_inst") ? " fcr-locked" : " fcr-active-group") : ""}`} disabled={fcr.active && fcr.isLocked("contatti_inst")}>
+              <legend className="fcr-group-legend">Contatti istituzionali</legend>
+              <div className="grid-form">
+                <label className="floating-field has-value">
+                  <input className="floating-input auth-input input-field-locked" type="email" value={alboB.institutionalEmail} disabled placeholder=" " onChange={() => undefined} />
+                  <span className="floating-field-label">Email istituzionale *</span>
+                </label>
+                <label className={`floating-field ${alboB.pec ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" type="email" value={alboB.pec} onChange={(e) => { setAlboB((prev) => ({ ...prev, pec: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">PEC</span>
+                </label>
+                <label className={`floating-field ${alboB.phone ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.phone} onChange={(e) => { setAlboB((prev) => ({ ...prev, phone: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Telefono *</span>
+                </label>
+                <label className={`floating-field ${alboB.website ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.website} onChange={(e) => { setAlboB((prev) => ({ ...prev, website: e.target.value })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Sito web</span>
+                </label>
+              </div>
+              {errors.institutionalEmail ? <p className="error">{errors.institutionalEmail}</p> : null}
+              {errors.phone ? <p className="error">{errors.phone}</p> : null}
+            </fieldset>
+
+            {/* ── leg_rappr ── */}
+            <fieldset className={`fcr-group${fcr.active ? (fcr.isLocked("leg_rappr") ? " fcr-locked" : " fcr-active-group") : ""}`} disabled={fcr.active && fcr.isLocked("leg_rappr")}>
+              <legend className="fcr-group-legend">Legale rappresentante</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${alboB.legalRepresentative.name ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.legalRepresentative.name} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, legalRepresentative: { ...prev.legalRepresentative, name: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Legale rappresentante - nome *</span>
+                </label>
+                <label className={`floating-field ${alboB.legalRepresentative.taxCode ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.legalRepresentative.taxCode} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, legalRepresentative: { ...prev.legalRepresentative, taxCode: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Legale rappresentante - codice fiscale *</span>
+                </label>
+                <label className={`floating-field ${alboB.legalRepresentative.role ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.legalRepresentative.role} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, legalRepresentative: { ...prev.legalRepresentative, role: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Legale rappresentante - ruolo *</span>
+                </label>
+              </div>
+              {errors.legalRepresentativeName ? <p className="error">{errors.legalRepresentativeName}</p> : null}
+              {errors.legalRepresentativeTaxCode ? <p className="error">{errors.legalRepresentativeTaxCode}</p> : null}
+              {errors.legalRepresentativeRole ? <p className="error">{errors.legalRepresentativeRole}</p> : null}
+            </fieldset>
+
+            {/* ── ref_operativo ── */}
+            <fieldset className={`fcr-group${fcr.active ? (fcr.isLocked("ref_operativo") ? " fcr-locked" : " fcr-active-group") : ""}`} disabled={fcr.active && fcr.isLocked("ref_operativo")}>
+              <legend className="fcr-group-legend">Referente operativo</legend>
+              <div className="grid-form">
+                <label className={`floating-field ${alboB.operationalContact.name ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.operationalContact.name} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, operationalContact: { ...prev.operationalContact, name: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Referente operativo - nome *</span>
+                </label>
+                <label className={`floating-field ${alboB.operationalContact.role ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.operationalContact.role} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, operationalContact: { ...prev.operationalContact, role: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Referente operativo - ruolo</span>
+                </label>
+                <label className={`floating-field ${alboB.operationalContact.email ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" type="email" value={alboB.operationalContact.email} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, operationalContact: { ...prev.operationalContact, email: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Referente operativo - email *</span>
+                </label>
+                <label className={`floating-field ${alboB.operationalContact.phone ? "has-value" : ""}`}>
+                  <input className="floating-input auth-input" value={alboB.operationalContact.phone} onChange={(e) => { const v = e.target.value; setAlboB((prev) => ({ ...prev, operationalContact: { ...prev.operationalContact, phone: v } })); markDirty(); }} placeholder=" " />
+                  <span className="floating-field-label">Referente operativo - telefono *</span>
+                </label>
+              </div>
+              {errors.operationalContactName ? <p className="error">{errors.operationalContactName}</p> : null}
+              {errors.operationalContactEmail ? <p className="error">{errors.operationalContactEmail}</p> : null}
+              {errors.operationalContactPhone ? <p className="error">{errors.operationalContactPhone}</p> : null}
+            </fieldset>
           </>
         )}
 
         <div className="revamp-step-actions">
-          <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/2`}>
-            {t("revamp.step1.goToStep2")}
-          </Link>
-          <button
-            type="submit"
-            className="home-btn home-btn-primary"
-            disabled={saveState === "saving"}
-          >
-            <Save className="h-4 w-4" />
-            <span>{saveState === "saving" ? t("revamp.step.common.saving") : t("revamp.step.common.saveSection")}</span>
-          </button>
-          <Link className="home-btn home-btn-secondary" to="/supplier">
-            {t("revamp.step.common.supplierArea")}
-          </Link>
+          {!fcr.active && (
+            <Link className="home-btn home-btn-secondary" to={`/application/${applicationId}/step/2`}>
+              {t("revamp.step1.goToStep2")}
+            </Link>
+          )}
+          {!fcr.active && (
+            <button
+              type="submit"
+              className="home-btn home-btn-primary"
+              disabled={saveState === "saving"}
+            >
+              <Save className="h-4 w-4" />
+              <span>{saveState === "saving" ? t("revamp.step.common.saving") : t("revamp.step.common.saveSection")}</span>
+            </button>
+          )}
+          {!fcr.active && (
+            <Link className="home-btn home-btn-secondary" to="/supplier">
+              {t("revamp.step.common.supplierArea")}
+            </Link>
+          )}
         </div>
       </form>
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
     </section>
   );
 }

@@ -3,6 +3,7 @@ import { HttpError } from "../../api/http";
 import { getAdminReportKpis, type AdminReportKpis } from "../../api/adminReportApi";
 import { getAdminReviewQueue, type AdminReviewCaseSummary } from "../../api/adminReviewApi";
 import { getAdminAuditEvents, type AdminAuditEventRow } from "../../api/adminAuditApi";
+import { listPendingAdminFieldChangeRequests } from "../../api/fieldChangeRequestApi";
 import type { AdminRole } from "../../api/adminUsersRolesApi";
 import { useAuth } from "../../auth/AuthContext";
 import { useAdminGovernanceRole } from "../../hooks/useAdminGovernanceRole";
@@ -28,6 +29,7 @@ type AdminDashboardCapabilities = {
   canReadAudit: boolean;
   canManageInvites: boolean;
   canExportReports: boolean;
+  canManageFieldChanges: boolean;
 };
 
 function resolveCapabilities(adminRole: AdminRole | null): AdminDashboardCapabilities {
@@ -37,6 +39,7 @@ function resolveCapabilities(adminRole: AdminRole | null): AdminDashboardCapabil
     canReadAudit: adminRole !== null,
     canManageInvites: adminRole === "SUPER_ADMIN" || adminRole === "RESPONSABILE_ALBO",
     canExportReports: adminRole === "SUPER_ADMIN" || adminRole === "RESPONSABILE_ALBO",
+    canManageFieldChanges: adminRole === "SUPER_ADMIN" || adminRole === "RESPONSABILE_ALBO",
   };
 }
 
@@ -48,6 +51,7 @@ export function AdminDashboardPage() {
   const [queue, setQueue] = useState<AdminReviewCaseSummary[]>([]);
   const [recentActivity, setRecentActivity] = useState<SuperAdminRecentActivityItem[]>([]);
   const [monthTrend, setMonthTrend] = useState<SuperAdminMonthTrendPoint[]>([]);
+  const [pendingFieldChangeCount, setPendingFieldChangeCount] = useState(0);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const dashboardRefreshInFlightRef = useRef(false);
@@ -309,6 +313,7 @@ export function AdminDashboardPage() {
       setQueue([]);
       setRecentActivity([]);
       setMonthTrend([]);
+      setPendingFieldChangeCount(0);
       return;
     }
 
@@ -320,16 +325,18 @@ export function AdminDashboardPage() {
     dashboardRefreshInFlightRef.current = true;
     if (showLoading) setLoading(true);
     try {
-      const [kpisData, queueData, auditData] = await Promise.all([
+      const [kpisData, queueData, auditData, fieldChangeRows] = await Promise.all([
         capabilities.canReadKpis ? getAdminReportKpis(token) : Promise.resolve(EMPTY_KPIS),
         capabilities.canReadQueue ? getAdminReviewQueue(token) : Promise.resolve([] as AdminReviewCaseSummary[]),
-        capabilities.canReadAudit ? getAdminAuditEvents(token).catch(() => [] as AdminAuditEventRow[]) : Promise.resolve([] as AdminAuditEventRow[])
+        capabilities.canReadAudit ? getAdminAuditEvents(token).catch(() => [] as AdminAuditEventRow[]) : Promise.resolve([] as AdminAuditEventRow[]),
+        capabilities.canManageFieldChanges ? listPendingAdminFieldChangeRequests(token).catch(() => []) : Promise.resolve([])
       ]);
       setKpis(kpisData);
       const sortedQueue = [...queueData].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
       setQueue(sortedQueue);
       setRecentActivity(mapAuditToRecent(auditData));
       setMonthTrend(buildMonthTrend(sortedQueue, auditData));
+      setPendingFieldChangeCount(fieldChangeRows.length);
       setLastUpdatedAt(new Date().toISOString());
     } catch (error) {
       const message = error instanceof HttpError ? error.message : "";
@@ -350,6 +357,7 @@ export function AdminDashboardPage() {
     capabilities.canReadAudit,
     capabilities.canReadKpis,
     capabilities.canReadQueue,
+    capabilities.canManageFieldChanges,
     token
   ]);
 
@@ -387,6 +395,7 @@ export function AdminDashboardPage() {
       canManageInvites={canManageInvites}
       canExportReports={capabilities.canExportReports}
       canAccessQueue={capabilities.canReadQueue}
+      pendingFieldChangeCount={pendingFieldChangeCount}
     />
   );
 }

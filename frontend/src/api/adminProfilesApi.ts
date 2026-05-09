@@ -21,6 +21,11 @@ export interface AdminRegistryProfileRow {
   updatedAt: string;
   publicCardView?: Record<string, unknown> | null;
   adminCardView?: Record<string, unknown> | null;
+  pendingFieldChange?: boolean;
+  pendingFieldChangeSectionKeys?: string[];
+  pendingDocumentRenewal?: boolean;
+  pendingDocumentRenewalLabels?: string[];
+  expiredDocumentLabels?: string[];
 }
 
 interface ListAdminProfilesParams {
