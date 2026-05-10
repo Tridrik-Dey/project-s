@@ -38,6 +38,77 @@ final class RevampDocumentRenewalJson {
         return findMatchingAttachment(payload, documentType, certificationKey);
     }
 
+    static JsonNode findCertificationRecord(JsonNode payload, String certificationKey) {
+        if (payload == null || certificationKey == null || certificationKey.isBlank()) return null;
+        JsonNode record = payload.path("certificazioni").path(certificationKey);
+        return record.isMissingNode() || record.isNull() ? null : record;
+    }
+
+    static boolean isCertificationDeclined(JsonNode payload, String certificationKey) {
+        JsonNode record = findCertificationRecord(payload, certificationKey);
+        return record != null && "no".equalsIgnoreCase(record.path("presente").asText(""));
+    }
+
+    static JsonNode findRenewalEvidence(JsonNode payload, RegistryType registryType, String sectionKey, String documentType, String certificationKey) {
+        if ("S4".equals(sectionKey)
+                && "CERTIFICATION".equals(documentType)
+                && certificationKey != null
+                && !certificationKey.isBlank()
+                && isCertificationDeclined(payload, certificationKey)) {
+            return findCertificationRecord(payload, certificationKey);
+        }
+        return findMatchingDocument(payload, registryType, sectionKey, documentType, certificationKey);
+    }
+
+    static JsonNode mergeCertificationRenewal(ObjectMapper objectMapper, JsonNode currentPayload, JsonNode incomingPayload, String certificationKey) {
+        if (currentPayload == null || !currentPayload.isObject() || incomingPayload == null || !incomingPayload.isObject()) {
+            return currentPayload;
+        }
+        JsonNode incomingRecord = findCertificationRecord(incomingPayload, certificationKey);
+        JsonNode incomingAttachment = findMatchingAttachment(incomingPayload, "CERTIFICATION", certificationKey);
+        if ((incomingRecord == null || incomingRecord.isMissingNode() || incomingRecord.isNull())
+                && (incomingAttachment == null || incomingAttachment.isMissingNode() || incomingAttachment.isNull())) {
+            return currentPayload;
+        }
+
+        ObjectNode copy = currentPayload.deepCopy();
+        if (incomingRecord != null && incomingRecord.isObject()) {
+            ObjectNode certifications = copy.path("certificazioni").isObject()
+                    ? (ObjectNode) copy.path("certificazioni").deepCopy()
+                    : objectMapper.createObjectNode();
+            ObjectNode nextRecord = certifications.path(certificationKey).isObject()
+                    ? (ObjectNode) certifications.path(certificationKey).deepCopy()
+                    : objectMapper.createObjectNode();
+            if ("no".equalsIgnoreCase(incomingRecord.path("presente").asText(""))) {
+                nextRecord.put("presente", "no");
+                certifications.set(certificationKey, nextRecord);
+                copy.set("certificazioni", certifications);
+                removeMatchingAttachment(copy, objectMapper, "CERTIFICATION", certificationKey);
+                return copy;
+            }
+            certifications.set(certificationKey, incomingRecord.deepCopy());
+            copy.set("certificazioni", certifications);
+        }
+
+        if (incomingAttachment != null && incomingAttachment.isObject()) {
+            return replaceMatchingAttachment(objectMapper, copy, "CERTIFICATION", certificationKey, incomingAttachment);
+        }
+        return copy;
+    }
+
+    private static void removeMatchingAttachment(ObjectNode payload, ObjectMapper objectMapper, String documentType, String certificationKey) {
+        ArrayNode next = objectMapper.createArrayNode();
+        JsonNode attachments = payload.path("attachments");
+        if (attachments.isArray()) {
+            for (JsonNode att : attachments) {
+                if (!matches(att, documentType, certificationKey)) {
+                    next.add(att);
+                }
+            }
+        }
+        payload.set("attachments", next);
+    }
+
     static JsonNode replaceMatchingAttachment(
             ObjectMapper objectMapper,
             JsonNode currentPayload,
@@ -92,6 +163,26 @@ final class RevampDocumentRenewalJson {
             return copy;
         }
         return replaceMatchingAttachment(objectMapper, currentPayload, documentType, certificationKey, replacement);
+    }
+
+    static JsonNode restoreCertificationRenewal(ObjectMapper objectMapper, JsonNode currentPayload, String certificationKey, JsonNode oldAttachment) {
+        JsonNode restored = replaceMatchingAttachment(objectMapper, currentPayload, "CERTIFICATION", certificationKey, oldAttachment);
+        if (restored == null || !restored.isObject()) return restored;
+        ObjectNode copy = restored.deepCopy();
+        ObjectNode certifications = copy.path("certificazioni").isObject()
+                ? (ObjectNode) copy.path("certificazioni").deepCopy()
+                : objectMapper.createObjectNode();
+        ObjectNode record = certifications.path(certificationKey).isObject()
+                ? (ObjectNode) certifications.path(certificationKey).deepCopy()
+                : objectMapper.createObjectNode();
+        record.put("presente", "si");
+        if (oldAttachment != null && oldAttachment.isObject()) {
+            if (oldAttachment.hasNonNull("fileName")) record.put("fileName", oldAttachment.path("fileName").asText(""));
+            if (oldAttachment.hasNonNull("scadenza")) record.put("scadenza", oldAttachment.path("scadenza").asText(""));
+        }
+        certifications.set(certificationKey, record);
+        copy.set("certificazioni", certifications);
+        return copy;
     }
 
     static boolean matches(JsonNode attachment, String documentType, String certificationKey) {

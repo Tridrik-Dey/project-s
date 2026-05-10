@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpDown, BarChart2, ClipboardList, Search, Star, Trash2, UserCheck, X } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, BarChart2, ClipboardList, Eye, Search, Star, Trash2, UserCheck, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import type { DashboardActivityEvent } from "../../api/adminDashboardEventsApi";
 import {
@@ -538,8 +538,8 @@ export function AdminEvaluationsPage(_props: { mode?: string }) {
               >
                 <span className="eval-row-avatar">{initials(row.supplierName)}</span>
                 <span className="eval-row-info">
-                  <strong>{row.supplierName ?? row.supplierRegistryProfileId}</strong>
-                  <span className="eval-row-type">{typeLabel(row.supplierType)}</span>
+                  <strong title={row.supplierName ?? row.supplierRegistryProfileId}>{row.supplierName ?? row.supplierRegistryProfileId}</strong>
+                  <span className="eval-row-type" title={typeLabel(row.supplierType)}>{typeLabel(row.supplierType)}</span>
                 </span>
                 <span className="eval-row-status">
                   {row.evaluationId ? (
@@ -622,10 +622,12 @@ export function AdminEvaluationsPage(_props: { mode?: string }) {
 function EvalTable({
   rows,
   onSelect,
+  canEvaluate = false,
   unevaluated = false,
 }: {
   rows: AdminEvaluationOverviewRow[];
   onSelect: (row: AdminEvaluationOverviewRow) => void;
+  canEvaluate?: boolean;
   unevaluated?: boolean;
 }) {
   return (
@@ -639,7 +641,11 @@ function EvalTable({
         <div>DATA</div>
         <div>AZIONI</div>
       </div>
-      {rows.map((row, index) => (
+      {rows.map((row, index) => {
+        const canEvaluateRow = unevaluated && canEvaluate;
+        const actionLabel = canEvaluateRow ? "Valuta" : unevaluated ? "Dettagli" : "Apri dettagli";
+        const ActionIcon = canEvaluateRow ? ClipboardList : Eye;
+        return (
         <div
           key={row.evaluationId ?? `${row.supplierRegistryProfileId}-${index}`}
           className="eval-table-row"
@@ -685,15 +691,17 @@ function EvalTable({
             <small>{unevaluated ? "Nessuna valutazione" : "Ultima valutazione"}</small>
           </div>
           <div className="eval-col-actions">
-            <button
-              className="eval-open-link"
-              onClick={(e) => { e.stopPropagation(); onSelect(row); }}
-            >
-              Apri dettagli
+              <button
+                className={`eval-open-link${canEvaluateRow ? " eval-open-link-evaluate" : ""}`}
+                onClick={(e) => { e.stopPropagation(); onSelect(row); }}
+              >
+              <ActionIcon className="eval-open-link-icon" aria-hidden="true" />
+              <span>{actionLabel}</span>
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

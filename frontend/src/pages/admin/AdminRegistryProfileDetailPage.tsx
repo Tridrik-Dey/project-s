@@ -39,6 +39,10 @@ import {
   adminRejectChangeRequest,
   type FieldChangeRequest,
 } from "../../api/fieldChangeRequestApi";
+import {
+  listDocumentRenewalRequests,
+  type DocumentRenewalRequest,
+} from "../../api/documentRenewalRequestApi";
 import { getRevampApplicationSections, type RevampSectionSnapshot } from "../../api/revampApplicationApi";
 import { useAuth } from "../../auth/AuthContext";
 import { AppToast } from "../../components/ui/toast";
@@ -82,6 +86,24 @@ function scalar(v: unknown): string {
   if (typeof v === "string") return v.trim();
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   return "";
+}
+
+function notificationTitle(item: AdminNotificationEvent): string {
+  if (item.eventKey === "admin.compose-email") return "Email manuale inviata";
+  if (item.eventKey.includes("expiry") || item.eventKey.includes("reminder")) return "Promemoria inviato";
+  if (item.eventKey.includes("fcr")) return "Email modifica dati";
+  if (item.eventKey.includes("renewal")) return "Email rinnovo documenti";
+  return "Email inviata";
+}
+
+function notificationDetail(item: AdminNotificationEvent): string {
+  const parts = [`Destinatario: ${item.recipient || "n/d"}`];
+  if (item.deliveryStatus) parts.push(`Stato: ${item.deliveryStatus}`);
+  if (item.failureReason) parts.push(`Errore: ${item.failureReason}`);
+  if (item.templateKey) {
+    parts.push(`Template: ${item.templateKey}${item.templateVersion ? ` v${item.templateVersion}` : ""}`);
+  }
+  return parts.join(" · ");
 }
 
 function documentSectionLabel(sectionKey: string): string {
@@ -264,6 +286,26 @@ function workflowCommunication(event: AdminAuditEventRow): CommunicationRow | nu
   }
   if (key === "revamp.review.decided") {
     const approved = meta.decision === "APPROVED";
+    if (meta.reviewType === "DOCUMENT_RENEWAL") {
+      return {
+        id: event.id,
+        title: approved ? "Rinnovo documenti approvato" : "Rinnovo documenti respinto",
+        detail: meta.documents ? `Documenti: ${meta.documents}` : "Decisione registrata per rinnovo documenti.",
+        status: approved ? "Approvato" : "Respinto",
+        occurredAt: event.occurredAt,
+        source: "workflow"
+      };
+    }
+    if (meta.reviewType === "FIELD_CHANGE") {
+      return {
+        id: event.id,
+        title: approved ? "Modifica dati approvata" : "Modifica dati respinta",
+        detail: approved ? "La modifica dati e stata approvata." : "La modifica dati e stata respinta.",
+        status: approved ? "Approvata" : "Respinta",
+        occurredAt: event.occurredAt,
+        source: "workflow"
+      };
+    }
     return {
       id: event.id,
       title: approved ? "Candidatura approvata" : "Candidatura non approvata",
@@ -274,6 +316,120 @@ function workflowCommunication(event: AdminAuditEventRow): CommunicationRow | nu
     };
   }
   return null;
+}
+
+function fieldChangeWorkflowCommunications(fcr: FieldChangeRequest): CommunicationRow[] {
+  const groupLabel = fieldChangeGroupLabel(fcr.sectionKey);
+  const rows: CommunicationRow[] = [{
+    id: `fcr-created-${fcr.id}`,
+    title: "Richiesta modifica dati inviata",
+    detail: `${groupLabel}${fcr.supplierMessage ? ` - ${fcr.supplierMessage}` : ""}`,
+    status: "Richiesta",
+    occurredAt: fcr.createdAt,
+    source: "workflow"
+  }];
+  if (fcr.unlockedAt) {
+    rows.push({
+      id: `fcr-unlocked-${fcr.id}`,
+      title: "Modifica dati sbloccata",
+      detail: `${groupLabel}${fcr.adminNote ? ` - Nota: ${fcr.adminNote}` : ""}`,
+      status: "Sbloccata",
+      occurredAt: fcr.unlockedAt,
+      source: "workflow"
+    });
+  }
+  if (fcr.submittedAt) {
+    rows.push({
+      id: `fcr-submitted-${fcr.id}`,
+      title: "Modifica dati inviata in revisione",
+      detail: groupLabel,
+      status: "In revisione",
+      occurredAt: fcr.submittedAt,
+      source: "workflow"
+    });
+  }
+  if (fcr.status === "REJECTED_BY_ADMIN") {
+    rows.push({
+      id: `fcr-rejected-admin-${fcr.id}`,
+      title: "Richiesta modifica dati rifiutata",
+      detail: `${groupLabel}${fcr.adminNote ? ` - Motivo: ${fcr.adminNote}` : ""}`,
+      status: "Rifiutata",
+      occurredAt: fcr.updatedAt,
+      source: "workflow"
+    });
+  }
+  if (fcr.status === "CANCELLED_BY_SUPPLIER") {
+    rows.push({
+      id: `fcr-cancelled-${fcr.id}`,
+      title: "Richiesta modifica dati annullata",
+      detail: `${groupLabel} - Il fornitore ha scelto di non modificare i dati.`,
+      status: "Annullata",
+      occurredAt: fcr.updatedAt,
+      source: "workflow"
+    });
+  }
+  return rows;
+}
+
+function documentRenewalWorkflowCommunications(request: DocumentRenewalRequest): CommunicationRow[] {
+  const rows: CommunicationRow[] = [{
+    id: `renewal-requested-${request.id}`,
+    title: request.expiredWithoutResponse ? "Documento scaduto da rinnovare" : "Rinnovo documento richiesto",
+    detail: `${request.documentLabel}${request.expiryDate ? ` - Scadenza: ${formatDate(request.expiryDate)}` : ""}`,
+    status: request.expiredWithoutResponse ? "Scaduto" : "Richiesto",
+    occurredAt: request.createdAt,
+    source: "workflow"
+  }];
+  if (request.submittedAt) {
+    rows.push({
+      id: `renewal-submitted-${request.id}`,
+      title: "Documento aggiornato dal fornitore",
+      detail: request.documentLabel,
+      status: "In revisione",
+      occurredAt: request.submittedAt,
+      source: "workflow"
+    });
+  }
+  if (request.status === "APPROVED" || request.status === "REJECTED") {
+    rows.push({
+      id: `renewal-outcome-${request.id}`,
+      title: request.status === "APPROVED" ? "Documento rinnovato approvato" : "Documento rinnovato respinto",
+      detail: request.documentLabel,
+      status: request.status === "APPROVED" ? "Approvato" : "Respinto",
+      occurredAt: request.updatedAt,
+      source: "workflow"
+    });
+  }
+  return rows;
+}
+
+function documentRenewalHistoryRows(request: DocumentRenewalRequest): HistoryRow[] {
+  const rows: HistoryRow[] = [{
+    id: `renewal-history-requested-${request.id}`,
+    title: request.expiredWithoutResponse ? "Documento scaduto da rinnovare" : "Rinnovo documento richiesto",
+    detail: `${request.documentLabel}${request.expiryDate ? ` - Scadenza: ${formatDate(request.expiryDate)}` : ""}`,
+    tone: "warn",
+    occurredAt: request.createdAt
+  }];
+  if (request.submittedAt) {
+    rows.push({
+      id: `renewal-history-submitted-${request.id}`,
+      title: "Documento aggiornato dal fornitore",
+      detail: request.documentLabel,
+      tone: "neutral",
+      occurredAt: request.submittedAt
+    });
+  }
+  if (request.status === "APPROVED" || request.status === "REJECTED") {
+    rows.push({
+      id: `renewal-history-outcome-${request.id}`,
+      title: request.status === "APPROVED" ? "Documento rinnovato approvato" : "Documento rinnovato respinto",
+      detail: request.documentLabel,
+      tone: request.status === "APPROVED" ? "ok" : "warn",
+      occurredAt: request.updatedAt
+    });
+  }
+  return rows;
 }
 
 function applicationHistoryEvent(event: AdminAuditEventRow): HistoryRow | null {
@@ -335,6 +491,24 @@ function applicationHistoryEvent(event: AdminAuditEventRow): HistoryRow | null {
   }
   if (key === "revamp.review.decided") {
     const approved = meta.decision === "APPROVED";
+    if (meta.reviewType === "DOCUMENT_RENEWAL") {
+      return {
+        id: event.id,
+        title: approved ? "Rinnovo documenti approvato" : "Rinnovo documenti respinto",
+        detail: meta.documents ? `Documenti: ${meta.documents}.` : "Decisione registrata per rinnovo documenti.",
+        tone: approved ? "ok" : "warn",
+        occurredAt: event.occurredAt
+      };
+    }
+    if (meta.reviewType === "FIELD_CHANGE") {
+      return {
+        id: event.id,
+        title: approved ? "Modifica dati approvata" : "Modifica dati respinta",
+        detail: approved ? "La modifica dati e stata approvata." : "La modifica dati e stata respinta.",
+        tone: approved ? "ok" : "warn",
+        occurredAt: event.occurredAt
+      };
+    }
     return {
       id: event.id,
       title: approved ? "Profilo approvato" : "Candidatura non approvata",
@@ -350,6 +524,8 @@ function shouldRefreshProfileDetail(event: DashboardActivityEvent, profileId: st
   const key = event.eventKey ?? "";
   if (event.entityType === "REVAMP_SUPPLIER_REGISTRY_PROFILE" && event.entityId === profileId) return true;
   if (event.entityType === "REVAMP_APPLICATION" && applicationId && event.entityId === applicationId) return true;
+  if (event.entityType === "FIELD_CHANGE_REQUEST" || key.startsWith("fcr.")) return true;
+  if (event.entityType === "DOCUMENT_RENEWAL_REQUEST" || key.startsWith("document_renewal.")) return true;
   return key.includes("evaluation") && event.entityId === profileId;
 }
 
@@ -368,8 +544,10 @@ export function AdminRegistryProfileDetailPage() {
   const { adminRole } = useAdminGovernanceRole();
   const isAlboB = location.pathname.startsWith("/admin/albo-b/");
   const shellActive = isAlboB ? "alboB" : "alboA";
-  const backPath = isAlboB ? "/admin/albo-b" : "/admin/albo-a";
-  const backLabel = isAlboB ? "Albo B — Aziende" : "Albo A — Professionisti";
+  const returnTo = new URLSearchParams(location.search).get("returnTo");
+  const safeReturnTo = returnTo?.startsWith("/admin/candidature") ? returnTo : null;
+  const backPath = safeReturnTo ?? (isAlboB ? "/admin/albo-b" : "/admin/albo-a");
+  const backLabel = safeReturnTo ? "Modifiche dati" : isAlboB ? "Albo B — Aziende" : "Albo A — Professionisti";
 
   const [tab, setTab] = useState<DetailTab>("profilo");
   const [profile, setProfile] = useState<AdminRegistryProfileRow | null>(null);
@@ -384,6 +562,7 @@ export function AdminRegistryProfileDetailPage() {
   const [notes, setNotes] = useState("");
   const [showCompose, setShowCompose] = useState(false);
   const [fieldChangeRequests, setFieldChangeRequests] = useState<FieldChangeRequest[]>([]);
+  const [documentRenewalRequests, setDocumentRenewalRequests] = useState<DocumentRenewalRequest[]>([]);
   const [fcrActionBusy, setFcrActionBusy] = useState<string | null>(null);
   const refreshInFlightRef = useRef(false);
   const refreshQueuedRef = useRef(false);
@@ -439,18 +618,21 @@ export function AdminRegistryProfileDetailPage() {
       setTimeline(timelineData);
       setNotifications(notificationData);
       if (profileData.applicationId) {
-        const [sectionsData, auditData, fcrs] = await Promise.all([
+        const [sectionsData, auditData, fcrs, renewals] = await Promise.all([
           getRevampApplicationSections(profileData.applicationId, token).catch(() => []),
           getAdminAuditEvents(token, { entityType: "REVAMP_APPLICATION", entityId: profileData.applicationId }).catch(() => []),
-          listFieldChangeRequests(profileData.applicationId, token).catch(() => [] as FieldChangeRequest[])
+          listFieldChangeRequests(profileData.applicationId, token).catch(() => [] as FieldChangeRequest[]),
+          listDocumentRenewalRequests(profileData.applicationId, token).catch(() => [] as DocumentRenewalRequest[])
         ]);
         setSections(sectionsData);
         setApplicationAudit(auditData);
         setFieldChangeRequests(fcrs);
+        setDocumentRenewalRequests(renewals);
       } else {
         setSections([]);
         setApplicationAudit([]);
         setFieldChangeRequests([]);
+        setDocumentRenewalRequests([]);
       }
       const aggregate = await getAdminEvaluationSummary(profileId, token).catch(() => null);
       setEvaluationAggregate(aggregate);
@@ -458,6 +640,8 @@ export function AdminRegistryProfileDetailPage() {
       const message = error instanceof HttpError ? error.message : "Caricamento scheda profilo non riuscito.";
       setToast({ message, type: "error" });
       setProfile(null); setSections([]); setTimeline([]); setNotifications([]); setApplicationAudit([]); setEvaluationAggregate(null);
+      setFieldChangeRequests([]);
+      setDocumentRenewalRequests([]);
     } finally {
       refreshInFlightRef.current = false;
       if (showLoading) setLoading(false);
@@ -528,6 +712,7 @@ export function AdminRegistryProfileDetailPage() {
     ...applicationAudit
       .map(applicationHistoryEvent)
       .filter((item): item is HistoryRow => Boolean(item)),
+    ...documentRenewalRequests.flatMap(documentRenewalHistoryRows),
     ...fieldChangeRequests.map((fcr): HistoryRow => {
       const tone: HistoryRow["tone"] = fcr.status === "APPROVED"
         ? "ok"
@@ -540,10 +725,16 @@ export function AdminRegistryProfileDetailPage() {
           ? "Modifica dati approvata"
           : fcr.status === "REJECTED"
             ? "Modifica dati respinta"
-            : fcr.status === "SUBMITTED" || fcr.status === "UNDER_REVIEW"
-              ? "Modifica dati in revisione"
-              : "Richiesta modifica dati",
-        detail: `${fieldChangeGroupLabel(fcr.sectionKey)}${fcr.supplierMessage ? ` - ${fcr.supplierMessage}` : ""}`,
+            : fcr.status === "REJECTED_BY_ADMIN"
+              ? "Richiesta modifica dati rifiutata"
+            : fcr.status === "CANCELLED_BY_SUPPLIER"
+              ? "Richiesta modifica dati annullata"
+              : fcr.status === "SUBMITTED" || fcr.status === "UNDER_REVIEW"
+                ? "Modifica dati in revisione"
+                : fcr.status === "UNLOCKED"
+                  ? "Modifica dati sbloccata"
+                  : "Richiesta modifica dati",
+        detail: `${fieldChangeGroupLabel(fcr.sectionKey)}${fcr.supplierMessage ? ` - ${fcr.supplierMessage}` : ""}${fcr.status === "REJECTED_BY_ADMIN" && fcr.adminNote ? ` - Motivo: ${fcr.adminNote}` : ""}`,
         tone,
         occurredAt: fcr.submittedAt ?? fcr.updatedAt ?? fcr.createdAt
       };
@@ -553,10 +744,12 @@ export function AdminRegistryProfileDetailPage() {
     ...applicationAudit
       .map(workflowCommunication)
       .filter((item): item is CommunicationRow => Boolean(item)),
+    ...documentRenewalRequests.flatMap(documentRenewalWorkflowCommunications),
+    ...fieldChangeRequests.flatMap(fieldChangeWorkflowCommunications),
     ...notifications.map((item) => ({
       id: item.id,
-      title: item.eventKey,
-      detail: `Destinatario: ${item.recipient || "n/d"} · Template: ${item.templateKey || "n/d"} v${item.templateVersion ?? "n/d"}`,
+      title: notificationTitle(item),
+      detail: notificationDetail(item),
       status: item.deliveryStatus,
       occurredAt: item.sentAt ?? item.createdAt,
       source: "email" as const
@@ -619,7 +812,7 @@ export function AdminRegistryProfileDetailPage() {
               >
                 <ArrowLeft className="h-5 w-5" />
               </Link>
-              <span className="head-icon-tooltip">Torna all'elenco</span>
+              <span className="head-icon-tooltip">Torna a {backLabel}</span>
             </div>
           </div>
         </div>

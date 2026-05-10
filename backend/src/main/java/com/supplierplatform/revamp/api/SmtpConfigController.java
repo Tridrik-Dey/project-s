@@ -29,11 +29,15 @@ public class SmtpConfigController {
     private final RevampGovernanceAuthorizationService governanceAuthorizationService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<Map<String, String>>> getConfig() {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getConfig() {
         revampAccessGuard.requireReadEnabled();
         governanceAuthorizationService.requireAnyRole(getCurrentUserId(), AdminRole.SUPER_ADMIN);
         String email = smtpConfigStore.getEmail();
-        return ResponseEntity.ok(ApiResponse.ok(Map.of("email", email != null ? email : "")));
+        return ResponseEntity.ok(ApiResponse.ok(Map.of(
+                "email", email != null ? email : "",
+                "passwordConfigured", smtpConfigStore.hasConfig(),
+                "debugOtpEnabled", smtpConfigStore.isDebugOtpEnabled()
+        )));
     }
 
     @PostMapping
@@ -41,7 +45,14 @@ public class SmtpConfigController {
         revampAccessGuard.requireReadEnabled();
         governanceAuthorizationService.requireAnyRole(getCurrentUserId(), AdminRole.SUPER_ADMIN);
         try {
-            smtpConfigStore.save(request.email(), request.password());
+            String password = request.password();
+            String effectivePassword = password != null && !password.isBlank()
+                    ? password
+                    : smtpConfigStore.getPassword();
+            if (effectivePassword == null || effectivePassword.isBlank()) {
+                throw new IllegalArgumentException("SMTP app password is required.");
+            }
+            smtpConfigStore.save(request.email(), effectivePassword, Boolean.TRUE.equals(request.debugOtpEnabled()));
         } catch (IOException e) {
             throw new IllegalStateException("Failed to save SMTP config: " + e.getMessage(), e);
         }

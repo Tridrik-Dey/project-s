@@ -6,6 +6,11 @@ import { useAdminGovernanceRole } from "../../hooks/useAdminGovernanceRole";
 import { useAdminRealtimeRefresh } from "../../hooks/useAdminRealtimeRefresh";
 import { SmtpSettingsModal } from "../../components/admin/SmtpSettingsModal";
 import { listPendingAdminFieldChangeRequests } from "../../api/fieldChangeRequestApi";
+import { getAdminReviewQueue } from "../../api/adminReviewApi";
+import {
+  ADMIN_CANDIDATURE_ATTENTION_SEEN_EVENT,
+  getUnseenAdminAttentionIds
+} from "../../utils/adminCandidatureAttention";
 
 type AdminNavKey = "dashboard" | "alboA" | "alboB" | "candidature" | "inviti" | "valutazioni" | "report" | "impostazioni";
 
@@ -27,6 +32,14 @@ const SIDEBAR_WIDTH_MAX = 320;
 const SIDEBAR_WIDTH_DEFAULT = 220;
 const SIDEBAR_COMPACT_THRESHOLD = 132;
 const SIDEBAR_COLLAPSE_DELAY_MS = 520;
+
+function isFieldChangeQueueItem(item: { reviewType?: string | null; fieldChangeRequestId?: string | null }): boolean {
+  return item.reviewType === "FIELD_CHANGE" || Boolean(item.fieldChangeRequestId);
+}
+
+function fieldChangeAttentionId(item: { id: string; fieldChangeRequestId?: string | null }): string {
+  return item.fieldChangeRequestId?.trim() || item.id;
+}
 
 function clampSidebarWidth(value: number): number {
   return Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, value));
@@ -75,7 +88,8 @@ export function AdminCandidatureShell({ active, children }: AdminCandidatureShel
   const [sidebarExpanded, setSidebarExpanded] = useState(() => {
     return sessionStorage.getItem(SIDEBAR_EXPANDED_SESSION_KEY) === "true";
   });
-  const [pendingFieldChangeCount, setPendingFieldChangeCount] = useState(0);
+  const [unseenFieldChangeCount, setUnseenFieldChangeCount] = useState(0);
+  const [unseenNewCandidatureCount, setUnseenNewCandidatureCount] = useState(0);
   const userRef = useRef<HTMLDivElement>(null);
   const sidebarCollapseTimerRef = useRef<number | null>(null);
   const resizeRafRef = useRef<number | null>(null);
@@ -85,19 +99,45 @@ export function AdminCandidatureShell({ active, children }: AdminCandidatureShel
   const sidebarCompact = !sidebarExpanded || sidebarWidth <= SIDEBAR_COMPACT_THRESHOLD;
   const renderedSidebarWidth = sidebarExpanded ? sidebarWidth : SIDEBAR_WIDTH_MIN;
   const canManageFieldChanges = adminRole === "SUPER_ADMIN" || adminRole === "RESPONSABILE_ALBO";
+  const canSeeCandidatureAttention = resolved && adminRole !== "VIEWER";
+  const candidatureBadgeCount = unseenFieldChangeCount + unseenNewCandidatureCount;
+  const candidatureHref = unseenFieldChangeCount > 0
+    ? "/admin/candidature?tab=modifiche-dati"
+    : unseenNewCandidatureCount > 0
+      ? "/admin/candidature?tab=nuove-candidature"
+      : "/admin/candidature";
 
-  const loadPendingFieldChangeCount = useCallback(async () => {
-    if (!auth?.token || !canManageFieldChanges) {
-      setPendingFieldChangeCount(0);
+  const loadCandidatureAttention = useCallback(async () => {
+    if (!auth?.token || !canSeeCandidatureAttention) {
+      setUnseenFieldChangeCount(0);
+      setUnseenNewCandidatureCount(0);
       return;
     }
     try {
-      const items = await listPendingAdminFieldChangeRequests(auth.token);
-      setPendingFieldChangeCount(items.length);
+      const [fieldChanges, queue] = await Promise.all([
+        canManageFieldChanges ? listPendingAdminFieldChangeRequests(auth.token) : Promise.resolve([]),
+        getAdminReviewQueue(auth.token)
+      ]);
+      const pendingFieldChangeIds = fieldChanges.map((item) => item.id);
+      const fieldChangeIds = canManageFieldChanges
+        ? [
+            ...pendingFieldChangeIds,
+            ...queue
+              .filter((item) => isFieldChangeQueueItem(item) && item.status !== "DECIDED")
+              .filter((item) => !item.fieldChangeRequestId || !pendingFieldChangeIds.includes(item.fieldChangeRequestId))
+              .map(fieldChangeAttentionId)
+          ]
+        : [];
+      const newCandidatureIds = queue
+        .filter((item) => item.status === "PENDING_ASSIGNMENT" && item.reviewType !== "FIELD_CHANGE" && item.reviewType !== "DOCUMENT_RENEWAL")
+        .map((item) => item.id);
+      setUnseenFieldChangeCount(getUnseenAdminAttentionIds("fieldChanges", fieldChangeIds, auth.userId, auth.email).length);
+      setUnseenNewCandidatureCount(getUnseenAdminAttentionIds("newCandidatures", newCandidatureIds, auth.userId, auth.email).length);
     } catch {
-      setPendingFieldChangeCount(0);
+      setUnseenFieldChangeCount(0);
+      setUnseenNewCandidatureCount(0);
     }
-  }, [auth?.token, canManageFieldChanges]);
+  }, [auth?.email, auth?.token, auth?.userId, canManageFieldChanges, canSeeCandidatureAttention]);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
@@ -119,17 +159,28 @@ export function AdminCandidatureShell({ active, children }: AdminCandidatureShel
   }, [popoverOpen]);
 
   useEffect(() => {
-    void loadPendingFieldChangeCount();
-  }, [loadPendingFieldChangeCount]);
+    void loadCandidatureAttention();
+  }, [loadCandidatureAttention]);
+
+  useEffect(() => {
+    function handleAttentionSeen() {
+      void loadCandidatureAttention();
+    }
+    window.addEventListener(ADMIN_CANDIDATURE_ATTENTION_SEEN_EVENT, handleAttentionSeen);
+    return () => window.removeEventListener(ADMIN_CANDIDATURE_ATTENTION_SEEN_EVENT, handleAttentionSeen);
+  }, [loadCandidatureAttention]);
 
   useAdminRealtimeRefresh({
     token: auth?.token ?? "",
-    enabled: canManageFieldChanges,
+    enabled: canSeeCandidatureAttention,
     shouldRefresh: (event) => {
       const key = event.eventKey ?? "";
-      return key.startsWith("fcr.") || event.entityType === "FIELD_CHANGE_REQUEST";
+      return key.startsWith("fcr.")
+        || key.startsWith("revamp.application.")
+        || event.entityType === "FIELD_CHANGE_REQUEST"
+        || event.entityType === "REVAMP_APPLICATION";
     },
-    onRefresh: () => loadPendingFieldChangeCount()
+    onRefresh: () => loadCandidatureAttention()
   });
 
   useEffect(() => {
@@ -221,10 +272,10 @@ export function AdminCandidatureShell({ active, children }: AdminCandidatureShel
           <Link to="/admin/albo-a" className={navClass(active === "alboA")}><Users className="superadmin-nav-icon h-4 w-4" /> <span className="superadmin-nav-label">Fornitori (Albo A)</span></Link>
           <Link to="/admin/albo-b" className={navClass(active === "alboB")}><Building2 className="superadmin-nav-icon h-4 w-4" /> <span className="superadmin-nav-label">Aziende (Albo B)</span></Link>
           {resolved && adminRole !== "VIEWER" && (
-            <Link to="/admin/candidature" className={navClass(active === "candidature")}>
+            <Link to={candidatureHref} className={navClass(active === "candidature")}>
               <ClipboardList className="superadmin-nav-icon h-4 w-4" />
               <span className="superadmin-nav-label">Candidature</span>
-              {pendingFieldChangeCount > 0 ? <span className="superadmin-nav-count">{pendingFieldChangeCount}</span> : null}
+              {candidatureBadgeCount > 0 ? <span className="superadmin-nav-count">{candidatureBadgeCount}</span> : null}
             </Link>
           )}
           {resolved && (adminRole === "SUPER_ADMIN" || adminRole === "RESPONSABILE_ALBO") && (

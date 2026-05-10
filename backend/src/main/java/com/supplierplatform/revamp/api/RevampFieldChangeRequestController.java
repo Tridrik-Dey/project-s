@@ -132,6 +132,14 @@ public class RevampFieldChangeRequestController {
         return ResponseEntity.ok(ApiResponse.ok("Change submitted for review", dto));
     }
 
+    @PostMapping("/{fcrId}/cancel")
+    public ResponseEntity<ApiResponse<FieldChangeRequestDto>> cancel(@PathVariable UUID fcrId) {
+        revampAccessGuard.requireWriteEnabled();
+        User currentUser = getCurrentUser();
+        FieldChangeRequestDto dto = fcrService.cancelUnlockedRequest(fcrId, currentUser.getId());
+        return ResponseEntity.ok(ApiResponse.ok("Change request cancelled", dto));
+    }
+
     private User getCurrentUser() {
         return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }

@@ -1,6 +1,5 @@
 import { UserCheck } from "lucide-react";
 import { SectionCard, ProfileSubsection } from "../shared/SectionCard";
-import { FieldGrid } from "../shared/FieldGrid";
 import { TagList } from "../shared/TagList";
 
 type P = Record<string, unknown>;
@@ -68,58 +67,71 @@ export function AlboASection3B({ payload }: { payload: P | null }) {
   const teachingLanguages = firstArr(payload.lingueDocenza);
   const titleCode = str(payload.titoloB) || str(payload.highestTitle);
   const yearsCode = str(payload.anniEsp) || str(payload.experienceBand);
+  const compactFields = [
+    { label: "Ordine professionale", value: str(payload.ordine) || str(payload.professionalOrder) },
+    { label: "Titolo di studio", value: TITLE_LABELS[titleCode] ?? titleCode },
+    { label: "Ambito di studio", value: str(payload.ambitoB) || str(payload.studyArea) },
+    { label: "Altro dettaglio ambito", value: str(payload.altroServ) },
+    { label: "Anni di esperienza", value: YEARS_BAND[yearsCode] ?? yearsCode },
+    { label: "Tariffa oraria", value: str(payload.hourlyRateRange) },
+    { label: "Docenza PA", value: str(payload.docenzaPA) },
+    { label: "Lingue", value: str(payload.lingue) },
+    { label: "Strumenti", value: str(payload.strumenti) },
+    { label: "Reti", value: str(payload.reti) },
+  ].filter((item) => item.value && item.value.trim() !== "");
 
   return (
-    <SectionCard icon={<UserCheck className="h-5 w-5" />} title="Sezione 3B - Altro Professionista" accent="teal">
-      <FieldGrid fields={[
-        { label: "Ordine professionale", value: str(payload.ordine) || str(payload.professionalOrder) },
-        { label: "Titolo di studio", value: TITLE_LABELS[titleCode] ?? titleCode },
-        { label: "Ambito di studio", value: str(payload.ambitoB) || str(payload.studyArea) },
-        { label: "Altro dettaglio ambito", value: str(payload.altroServ) },
-        { label: "Anni di esperienza", value: YEARS_BAND[yearsCode] ?? yearsCode },
-        { label: "Tariffa oraria", value: str(payload.hourlyRateRange) },
-        { label: "Docenza PA", value: str(payload.docenzaPA) },
-        { label: "Lingue", value: str(payload.lingue) },
-        { label: "Strumenti", value: str(payload.strumenti) },
-        { label: "Reti", value: str(payload.reti) },
-      ]} />
+    <SectionCard icon={<UserCheck className="h-5 w-5" />} title="Sezione 3B - Altro Professionista" accent="teal" density="compact">
+      <div className="profile-section-inline-flow">
+        {compactFields.map((item) => (
+          <div key={item.label} className="profile-field-row profile-inline-field">
+            <span className="profile-field-label">{item.label}</span>
+            <span className="profile-field-value">{item.value}</span>
+          </div>
+        ))}
 
-      {areas.length > 0 ? (
-        <ProfileSubsection title="Aree">
-          <TagList items={areas} color="teal" />
-        </ProfileSubsection>
-      ) : null}
+        {areas.length > 0 ? (
+          <ProfileSubsection title="Aree">
+            <TagList items={areas} color="teal" />
+          </ProfileSubsection>
+        ) : null}
 
-      {services.length > 0 ? (
-        <ProfileSubsection title="Servizi offerti">
-          <TagList items={services} color="teal" />
-        </ProfileSubsection>
-      ) : null}
+        {services.length > 0 ? (
+          <ProfileSubsection title="Servizi offerti">
+            <TagList items={services} color="teal" />
+          </ProfileSubsection>
+        ) : null}
 
-      {consulting.length > 0 ? (
-        <ProfileSubsection title="Consulenza">
-          <TagList items={consulting} color="blue" />
-        </ProfileSubsection>
-      ) : null}
+        {consulting.length > 0 ? (
+          <ProfileSubsection title="Consulenza">
+            <TagList items={consulting} color="blue" />
+          </ProfileSubsection>
+        ) : null}
 
-      {teachingLanguages.length > 0 ? (
-        <ProfileSubsection title="Lingue docenza">
-          <TagList items={teachingLanguages} color="blue" />
-        </ProfileSubsection>
-      ) : null}
+        {teachingLanguages.length > 0 ? (
+          <ProfileSubsection title="Lingue docenza">
+            <TagList items={teachingLanguages} color="blue" />
+          </ProfileSubsection>
+        ) : null}
 
-      {(regions.length > 0 || provinces.length > 0) ? (
-        <ProfileSubsection title="Area territoriale">
-          {regions.length > 0 ? <><p className="territory-label">Regioni</p><TagList items={regions} color="blue" /></> : null}
-          {provinces.length > 0 ? <><p className="territory-label">Province</p><TagList items={provinces} color="blue" /></> : null}
-        </ProfileSubsection>
-      ) : null}
+        {regions.length > 0 ? (
+          <ProfileSubsection title="Regioni">
+            <TagList items={regions} color="blue" />
+          </ProfileSubsection>
+        ) : null}
 
-      {specificCerts.length > 0 ? (
-        <ProfileSubsection title="Certificazioni specifiche">
-          <TagList items={specificCerts} color="orange" />
-        </ProfileSubsection>
-      ) : null}
+        {provinces.length > 0 ? (
+          <ProfileSubsection title="Province">
+            <TagList items={provinces} color="blue" />
+          </ProfileSubsection>
+        ) : null}
+
+        {specificCerts.length > 0 ? (
+          <ProfileSubsection title="Certificazioni specifiche">
+            <TagList items={specificCerts} color="orange" />
+          </ProfileSubsection>
+        ) : null}
+      </div>
     </SectionCard>
   );
 }

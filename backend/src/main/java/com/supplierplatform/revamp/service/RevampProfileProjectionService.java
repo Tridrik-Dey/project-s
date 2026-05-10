@@ -19,18 +19,24 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class RevampProfileProjectionService {
+    private static final DateTimeFormatter MONTH_YEAR = DateTimeFormatter.ofPattern("MM/yyyy");
 
     private final RevampApplicationRepository applicationRepository;
     private final RevampApplicationSectionRepository sectionRepository;
@@ -74,6 +80,7 @@ public class RevampProfileProjectionService {
         profile.setApprovedAt(application.getApprovedAt() != null ? application.getApprovedAt() : LocalDateTime.now());
         profile.setDisplayName(buildDisplayName(application.getRegistryType(), s1));
         profile.setPublicSummary(buildPublicSummary(application.getRegistryType(), s2, s3, s4));
+        profile.setExpiresAt(findNearestExpiry(sections).map(LocalDate::atStartOfDay).orElse(null));
         RevampSupplierRegistryProfile savedProfile = profileRepository.save(profile);
 
         ObjectNode projected = objectMapper.createObjectNode();
@@ -235,6 +242,64 @@ public class RevampProfileProjectionService {
                     .collect(Collectors.joining(","));
         }
         return extractText(s4, "accreditationSummary");
+    }
+
+    private Optional<LocalDate> findNearestExpiry(Map<String, JsonNode> sections) {
+        return sections.values().stream()
+                .filter(node -> node != null && !node.isNull())
+                .flatMap(this::streamExpiryDates)
+                .min(LocalDate::compareTo);
+    }
+
+    private java.util.stream.Stream<LocalDate> streamExpiryDates(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return java.util.stream.Stream.empty();
+        }
+        if (node.isObject()) {
+            java.util.stream.Stream.Builder<LocalDate> dates = java.util.stream.Stream.builder();
+            node.fields().forEachRemaining(entry -> {
+                String key = entry.getKey();
+                JsonNode value = entry.getValue();
+                if (isExpiryField(key)) {
+                    parseExpiryDate(value.asText(null)).ifPresent(dates);
+                }
+                streamExpiryDates(value).forEach(dates);
+            });
+            return dates.build();
+        }
+        if (node.isArray()) {
+            return streamArray(node).flatMap(this::streamExpiryDates);
+        }
+        return java.util.stream.Stream.empty();
+    }
+
+    private boolean isExpiryField(String key) {
+        if (key == null) return false;
+        String normalized = key.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("expiresat")
+                || normalized.equals("expirydate")
+                || normalized.equals("iddocumentexpiry")
+                || normalized.equals("scadenza");
+    }
+
+    private Optional<LocalDate> parseExpiryDate(String raw) {
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        String value = raw.trim();
+        try {
+            return Optional.of(LocalDate.parse(value));
+        } catch (DateTimeParseException ignored) {
+            // Try the next accepted format.
+        }
+        try {
+            return Optional.of(LocalDateTime.parse(value).toLocalDate());
+        } catch (DateTimeParseException ignored) {
+            // Try the next accepted format.
+        }
+        try {
+            return Optional.of(YearMonth.parse(value, MONTH_YEAR).atEndOfMonth());
+        } catch (DateTimeParseException ignored) {
+            return Optional.empty();
+        }
     }
 
     private JsonNode firstNonNull(JsonNode first, JsonNode second) {

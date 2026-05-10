@@ -1,5 +1,6 @@
 package com.supplierplatform.revamp.service;
 
+import com.supplierplatform.config.CentralizedJavaMailSender;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,9 +20,7 @@ import java.util.Locale;
 public class RevampAlboBCertExpiryMailService {
 
     private final JavaMailSender javaMailSender;
-
-    @Value("${app.reviews.status-mail.from:no-reply@supplierplatform.local}")
-    private String fromEmail;
+    private final CentralizedJavaMailSender centralizedJavaMailSender;
 
     @Value("${app.frontend.base-url:http://127.0.0.1:5173}")
     private String frontendBaseUrl;
@@ -66,7 +65,7 @@ public class RevampAlboBCertExpiryMailService {
             var message = javaMailSender.createMimeMessage();
             var helper = new MimeMessageHelper(message, StandardCharsets.UTF_8.name());
             helper.setTo(recipientEmail);
-            helper.setFrom(fromEmail);
+            helper.setFrom(centralizedJavaMailSender.effectiveFromAddress());
             helper.setSubject(subject);
             helper.setText(body, false);
             javaMailSender.send(message);

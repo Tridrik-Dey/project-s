@@ -1,7 +1,9 @@
 package com.supplierplatform.revamp.mapper;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.supplierplatform.revamp.dto.DocumentRenewalRequestDto;
 import com.supplierplatform.revamp.dto.RevampReviewCaseSummaryDto;
+import com.supplierplatform.revamp.enums.DocumentRenewalRequestStatus;
 import com.supplierplatform.revamp.enums.RegistryType;
 import com.supplierplatform.revamp.model.RevampApplication;
 import com.supplierplatform.revamp.model.RevampDocumentRenewalRequest;
@@ -14,6 +16,13 @@ import com.supplierplatform.revamp.repository.RevampFieldChangeRequestRepository
 import com.supplierplatform.revamp.repository.RevampIntegrationRequestRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
+import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @Component
 public class RevampReviewCaseMapper {
@@ -51,6 +60,27 @@ public class RevampReviewCaseMapper {
         RevampDocumentRenewalRequest documentRenewalRequest = reviewCase.getId() == null || documentRenewalRequestRepository == null
                 ? null
                 : documentRenewalRequestRepository.findByReviewCaseId(reviewCase.getId()).stream().findFirst().orElse(null);
+        List<RevampDocumentRenewalRequest> renewalBatch = documentRenewalRequest == null || documentRenewalRequestRepository == null
+                ? List.of()
+                : documentRenewalRequestRepository.findByApplicationIdAndBatchIdOrderByCreatedAtAsc(
+                        documentRenewalRequest.getApplication().getId(),
+                        documentRenewalRequest.getBatchId()
+                );
+        int renewalSubmittedCount = (int) renewalBatch.stream()
+                .filter(item -> item.getStatus() == DocumentRenewalRequestStatus.SUBMITTED
+                        || item.getStatus() == DocumentRenewalRequestStatus.UNDER_REVIEW
+                        || item.getStatus() == DocumentRenewalRequestStatus.APPROVED
+                        || item.getStatus() == DocumentRenewalRequestStatus.REJECTED)
+                .count();
+        int renewalPendingSupplierCount = (int) renewalBatch.stream()
+                .filter(item -> item.getStatus() == DocumentRenewalRequestStatus.REMINDER_SENT
+                        || item.getStatus() == DocumentRenewalRequestStatus.EXPIRED_NO_RESPONSE)
+                .count();
+        List<DocumentRenewalRequestDto> activeRenewalRequests = documentRenewalRequest == null
+                ? List.of()
+                : activeRenewalRequests(app, reviewCase).stream()
+                        .map(this::toDocumentRenewalDto)
+                        .toList();
 
         return new RevampReviewCaseSummaryDto(
                 reviewCase.getId(),
@@ -89,7 +119,52 @@ public class RevampReviewCaseMapper {
                 documentRenewalRequest != null ? documentRenewalRequest.getDocumentType() : null,
                 documentRenewalRequest != null ? documentRenewalRequest.getDocumentLabel() : null,
                 documentRenewalRequest != null && documentRenewalRequest.getOldAttachmentJson() != null ? documentRenewalRequest.getOldAttachmentJson().toString() : null,
-                documentRenewalRequest != null && documentRenewalRequest.getNewAttachmentJson() != null ? documentRenewalRequest.getNewAttachmentJson().toString() : null
+                documentRenewalRequest != null && documentRenewalRequest.getNewAttachmentJson() != null ? documentRenewalRequest.getNewAttachmentJson().toString() : null,
+                documentRenewalRequest != null ? renewalSubmittedCount : null,
+                documentRenewalRequest != null ? renewalPendingSupplierCount : null,
+                activeRenewalRequests
+        );
+    }
+
+    private List<RevampDocumentRenewalRequest> activeRenewalRequests(RevampApplication app, RevampReviewCase reviewCase) {
+        if (app == null || reviewCase == null || documentRenewalRequestRepository == null) return List.of();
+        Map<UUID, RevampDocumentRenewalRequest> byId = new LinkedHashMap<>();
+        documentRenewalRequestRepository.findByApplicationIdAndStatusIn(
+                app.getId(),
+                List.of(DocumentRenewalRequestStatus.SUBMITTED, DocumentRenewalRequestStatus.UNDER_REVIEW)
+        ).forEach(item -> byId.put(item.getId(), item));
+        documentRenewalRequestRepository.findByReviewCaseId(reviewCase.getId())
+                .forEach(item -> byId.put(item.getId(), item));
+        return byId.values().stream()
+                .sorted(Comparator
+                        .comparing((RevampDocumentRenewalRequest item) -> item.getSubmittedAt() != null ? item.getSubmittedAt() : item.getCreatedAt())
+                        .thenComparing(RevampDocumentRenewalRequest::getDocumentLabel, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .toList();
+    }
+
+    private DocumentRenewalRequestDto toDocumentRenewalDto(RevampDocumentRenewalRequest request) {
+        boolean expired = request.getExpiryDate() != null
+                && request.getExpiryDate().isBefore(LocalDate.now())
+                && (request.getStatus() == DocumentRenewalRequestStatus.REMINDER_SENT
+                || request.getStatus() == DocumentRenewalRequestStatus.EXPIRED_NO_RESPONSE);
+        return new DocumentRenewalRequestDto(
+                request.getId(),
+                request.getApplication() != null ? request.getApplication().getId() : null,
+                request.getReviewCase() != null ? request.getReviewCase().getId() : null,
+                request.getSectionKey(),
+                request.getBatchId(),
+                request.getDocumentType(),
+                request.getDocumentLabel(),
+                request.getIntegrationItemCode(),
+                request.getCertificationKey(),
+                request.getExpiryDate(),
+                request.getStatus(),
+                request.getOldAttachmentJson() != null ? request.getOldAttachmentJson().toString() : null,
+                request.getNewAttachmentJson() != null ? request.getNewAttachmentJson().toString() : null,
+                request.getSubmittedAt(),
+                request.getCreatedAt(),
+                request.getUpdatedAt(),
+                expired
         );
     }
 

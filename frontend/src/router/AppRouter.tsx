@@ -8,6 +8,7 @@ import type { AdminRole } from "../api/adminUsersRolesApi";
 import { isRevampEmailVerified } from "../utils/revampEmailVerification";
 import { getMyLatestRevampApplication, getRevampApplicationSummary, type RevampApplicationSummary } from "../api/revampApplicationApi";
 import { loadRevampFcrEditSession } from "../utils/revampFcrEditSession";
+import { loadRevampDocumentRenewalEditSession } from "../utils/revampDocumentRenewalEditSession";
 
 const LoginPage = lazy(() => import("../pages/auth/LoginPage").then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import("../pages/auth/RegisterPage").then((m) => ({ default: m.RegisterPage })));
@@ -106,7 +107,10 @@ function RequireRevampDraftForWizard({ children, useRouteApplicationId = false }
           const canEditFcrSection =
             (summary?.status === "APPROVED" || summary?.status === "FIELD_CHANGE_IN_PROGRESS")
             && loadRevampFcrEditSession() !== null;
-          setRedirectTo(summary && summary.status !== "DRAFT" && !canEditIntegrationApplication && !canEditFcrSection ? submittedDestination(summary) : null);
+          const canEditDocumentRenewalSection =
+            (summary?.status === "APPROVED" || summary?.status === "RENEWAL_DUE")
+            && loadRevampDocumentRenewalEditSession() !== null;
+          setRedirectTo(summary && summary.status !== "DRAFT" && !canEditIntegrationApplication && !canEditFcrSection && !canEditDocumentRenewalSection ? submittedDestination(summary) : null);
         }
       } catch {
         if (!cancelled) setRedirectTo(null);

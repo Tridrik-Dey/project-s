@@ -3,6 +3,7 @@ import { apiRequest } from "./http";
 export type FieldChangeRequestStatus =
   | "PENDING_ADMIN_REVIEW"
   | "UNLOCKED"
+  | "CANCELLED_BY_SUPPLIER"
   | "REJECTED_BY_ADMIN"
   | "SUBMITTED"
   | "UNDER_REVIEW"
@@ -22,6 +23,7 @@ export interface FieldChangeRequest {
   beforeValueJson: string | null;
   afterValueJson: string | null;
   reviewCaseId: string | null;
+  decisionReason: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -38,6 +40,7 @@ export interface AdminFieldChangeActionPayload {
 export interface AdminPendingFieldChangeRequest {
   id: string;
   applicationId: string;
+  profileId: string | null;
   protocolCode: string | null;
   registryType: "ALBO_A" | "ALBO_B" | null;
   supplierDisplayName: string | null;
@@ -117,6 +120,17 @@ export function supplierSubmitChange(
 ): Promise<FieldChangeRequest> {
   return apiRequest<FieldChangeRequest>(
     `${BASE}/${fcrId}/submit`,
+    { method: "POST" },
+    token
+  );
+}
+
+export function supplierCancelChangeRequest(
+  fcrId: string,
+  token: string
+): Promise<FieldChangeRequest> {
+  return apiRequest<FieldChangeRequest>(
+    `${BASE}/${fcrId}/cancel`,
     { method: "POST" },
     token
   );

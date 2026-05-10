@@ -1,6 +1,6 @@
 import { ChangeEvent, useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, ArrowRight, CheckCircle, Info, Save, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle, Info, Lock, Save, Upload } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import {
   createRevampApplicationDraft,
@@ -58,10 +58,15 @@ function validateScadenzaField(val: string): string {
 const col: React.CSSProperties    = { display: "flex", flexDirection: "column", gap: 4 };
 const lbl: React.CSSProperties    = { fontSize: "0.78rem", fontWeight: 600, color: "#374151" };
 const errTxt: React.CSSProperties = { fontSize: "0.74rem", color: ERR };
-const baseInput = (error?: boolean): React.CSSProperties => ({
+const baseInput = (error?: boolean, disabled?: boolean): React.CSSProperties => ({
   width: "100%", padding: "10px 12px", fontSize: "0.88rem",
-  border: `1.5px solid ${error ? ERR : "#d1d5db"}`,
-  borderRadius: 6, outline: "none", boxSizing: "border-box", color: "#111827", background: "#fff",
+  border: `1.5px solid ${error ? ERR : disabled ? "#cbd5e1" : "#d1d5db"}`,
+  borderRadius: 6,
+  outline: "none",
+  boxSizing: "border-box",
+  color: disabled ? "#64748b" : "#111827",
+  background: disabled ? "#f1f5f9" : "#fff",
+  cursor: disabled ? "not-allowed" : "text",
 });
 
 function SectionLabel({ label }: { label: string }) {
@@ -100,6 +105,7 @@ function FileInput({ label, required, fileName, onChange, hintText, tooltip, upl
   disabled?: boolean;
 }) {
   const [showTip, setShowTip] = useState(false);
+  const isBlocked = Boolean(disabled && !uploading);
   return (
     <div style={col}>
       <span style={{ ...lbl, display: "flex", alignItems: "center", gap: 4 }}>
@@ -123,10 +129,21 @@ function FileInput({ label, required, fileName, onChange, hintText, tooltip, upl
           </span>
         ) : null}
       </span>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", border: `1.5px dashed ${fileName ? GREEN : "#d1d5db"}`, borderRadius: 6, cursor: disabled ? "default" : uploading ? "wait" : "pointer", background: fileName ? "#f0fdf4" : "#fafafa", transition: "border-color .15s", opacity: uploading || disabled ? 0.7 : 1 }}>
-        <Upload size={14} color={fileName ? GREEN : "#9ca3af"} />
-        <span style={{ fontSize: "0.83rem", color: fileName ? GREEN : "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {uploading ? "Caricamento in corso..." : (fileName || "Seleziona file PDF (max 5 MB)")}
+      <label style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "9px 12px",
+        border: `1.5px ${isBlocked ? "solid" : "dashed"} ${isBlocked ? "#cbd5e1" : fileName ? GREEN : "#d1d5db"}`,
+        borderRadius: 6,
+        cursor: isBlocked ? "not-allowed" : uploading ? "wait" : "pointer",
+        background: isBlocked ? "#f1f5f9" : fileName ? "#f0fdf4" : "#fafafa",
+        transition: "border-color .15s",
+        opacity: uploading ? 0.7 : 1
+      }}>
+        {isBlocked ? <Lock size={14} color="#64748b" /> : <Upload size={14} color={fileName ? GREEN : "#9ca3af"} />}
+        <span style={{ fontSize: "0.83rem", color: isBlocked ? "#64748b" : fileName ? GREEN : "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: isBlocked ? 700 : 400 }}>
+          {uploading ? "Caricamento in corso..." : isBlocked ? "Bloccato in questa richiesta" : (fileName || "Seleziona file PDF (max 5 MB)")}
         </span>
         <input type="file" accept=".pdf" onChange={onChange} disabled={uploading || disabled} style={{ display: "none" }} />
       </label>
@@ -142,6 +159,9 @@ export function RevampAlboBStep4CertificazioniPage() {
   const lockedEdit = Boolean(integrationEdit || renewalEdit);
   const renewalDocs = (renewalEdit?.documents ?? (renewalEdit ? [renewalEdit] : []));
   const renewalHasDocumentType = (documentType: string) => renewalDocs.some(item => item.documentType === documentType);
+  const requestedRenewalCertKeys = renewalDocs
+    .filter(item => item.documentType === "CERTIFICATION" && item.certificationKey)
+    .map(item => item.certificationKey as string);
   const allowVisura = !lockedEdit || integrationEditHasAnyCode(integrationEdit, ["VISURA_CAMERALE"]) || renewalHasDocumentType("VISURA_CAMERALE");
   const allowDurc = !lockedEdit || integrationEditHasAnyCode(integrationEdit, ["DURC"]) || renewalHasDocumentType("DURC");
   const allowCompanyProfile = !lockedEdit || integrationEditHasAnyCode(integrationEdit, ["COMPANY_PROFILE"]) || renewalHasDocumentType("COMPANY_PROFILE");
@@ -152,6 +172,13 @@ export function RevampAlboBStep4CertificazioniPage() {
     "CERT_SA8000",
     "CERTIFICATIONS_ACCREDITATIONS"
   ]) || renewalHasDocumentType("CERTIFICATION");
+  const allowCertificationKey = (key: string) => {
+    if (!lockedEdit) return true;
+    if (integrationEdit) return allowCertAttachments;
+    if (!allowCertAttachments) return false;
+    return requestedRenewalCertKeys.length === 0 || requestedRenewalCertKeys.includes(key);
+  };
+  const allowGenericCertAttachment = !renewalEdit || requestedRenewalCertKeys.length === 0;
 
   const [certs, setCerts] = useState<Record<string, CertRecord>>(
     Object.fromEntries(CERTS_ISO.map(c => [c.key, { presente: "", enteCertificatore: "", scadenza: "", fileName: "" }]))
@@ -269,6 +296,19 @@ export function RevampAlboBStep4CertificazioniPage() {
     setCerts(prev => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
   }
 
+  function updateCertPresence(key: string, value: "si" | "no") {
+    setCerts(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        presente: value,
+        ...(value === "no"
+          ? { enteCertificatore: "", scadenza: "", fileName: "", attachment: null }
+          : {})
+      }
+    }));
+  }
+
   function updateCertAttachment(key: string, result: AttachmentUploadResult) {
     setCerts(prev => ({
       ...prev,
@@ -362,8 +402,9 @@ export function RevampAlboBStep4CertificazioniPage() {
     if (durcAttachment) attachments.push({ documentType: "DURC", scadenza: durcScadenza || undefined, ...durcAttachment });
     if (companyProfAttachment) attachments.push({ documentType: "COMPANY_PROFILE", ...companyProfAttachment });
     for (const cert of CERTS_ISO) {
-      const attachment = certs[cert.key]?.attachment;
-      if (attachment) {
+      const certRecord = certs[cert.key];
+      const attachment = certRecord?.attachment;
+      if (attachment && certRecord?.presente !== "no") {
         attachments.push({
           documentType: "CERTIFICATION",
           certificationKey: cert.key,
@@ -390,10 +431,25 @@ export function RevampAlboBStep4CertificazioniPage() {
       if (allowCompanyProfile && !companyProfAttachment) e.companyProf = "Carica il company profile richiesto.";
       if (allowCertAttachments) {
         const requestedCertKeys = renewalDocs.map(item => item.certificationKey).filter((key): key is string => Boolean(key));
-        const hasRequestedCert = requestedCertKeys.length > 0
-          ? requestedCertKeys.every(key => Boolean(certs[key]?.attachment))
-          : Boolean(certAllegAttachment) || CERTS_ISO.some((cert) => certs[cert.key]?.attachment);
-        if (!hasRequestedCert) e.certAlleg = "Carica il certificato richiesto.";
+        if (renewalEdit && requestedCertKeys.length > 0) {
+          for (const key of requestedCertKeys) {
+            const rec = certs[key];
+            if (!rec?.presente) {
+              e[`cert_${key}`] = "Indica se vuoi mantenere questa certificazione.";
+              continue;
+            }
+            if (rec.presente === "si") {
+              if (!rec.enteCertificatore.trim()) e[`cert_${key}_ente`] = "Inserisci l'ente certificatore.";
+              if (!rec.scadenza.trim()) { e[`cert_${key}_scad`] = "Inserisci la scadenza."; }
+              else if (!MY_RE.test(rec.scadenza.trim())) { e[`cert_${key}_scad`] = "Formato MM/AAAA non valido."; }
+              else if (!isNotPastMonth(rec.scadenza.trim())) { e[`cert_${key}_scad`] = "La scadenza non puÃ² essere nel passato."; }
+              if (!rec.attachment) e[`cert_${key}_file`] = "Allega il certificato PDF.";
+            }
+          }
+        } else {
+          const hasRequestedCert = Boolean(certAllegAttachment) || CERTS_ISO.some((cert) => certs[cert.key]?.attachment);
+          if (!hasRequestedCert) e.certAlleg = "Carica il certificato richiesto.";
+        }
       }
       return e;
     }
@@ -541,26 +597,27 @@ export function RevampAlboBStep4CertificazioniPage() {
           <p style={{ fontSize: "0.82rem", color: MUTED, margin: 0 }}>Per ogni certificazione indica se è presente. Se sì, fornisci i dettagli. Carica gli allegati obbligatori.</p>
           <div style={{ height: 1, background: "#f3f4f6", margin: "16px 0 4px" }} />
 
-          <div className={lockedEdit ? "fcr-locked" : undefined}>
+          <div>
           {/* Certificazioni ISO */}
           <SectionLabel label="Certificazioni" />
           {CERTS_ISO.map(c => {
             const rec = certs[c.key];
+            const certAllowed = allowCertificationKey(c.key);
             const certErr = errors[`cert_${c.key}`];
             const enteErr = errors[`cert_${c.key}_ente`];
             const scadErr = errors[`cert_${c.key}_scad`];
             const fileErr = errors[`cert_${c.key}_file`];
             return (
-              <div key={c.key} style={{ border: `1px solid ${rec.presente === "si" ? GREEN + "60" : "#e5e7eb"}`, borderRadius: 8, padding: "16px 20px", marginBottom: 12 }}>
+              <div key={c.key} style={{ border: `1px solid ${!certAllowed ? "#cbd5e1" : rec.presente === "si" ? GREEN + "60" : "#e5e7eb"}`, borderRadius: 8, padding: "16px 20px", marginBottom: 12, background: certAllowed ? "#fff" : "#f8fafc" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#1e293b" }}>{c.label}</div>
+                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: certAllowed ? "#1e293b" : "#64748b" }}>{c.label}</div>
                     <div style={{ fontSize: "0.76rem", color: MUTED }}>{c.desc}</div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                     {(["si","no"] as const).map(v => (
-                      <label key={v} style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", padding: "5px 12px", borderRadius: 6, border: `1.5px solid ${rec.presente === v ? GREEN : "#e5e7eb"}`, background: rec.presente === v ? `${GREEN}0d` : "#fff", fontSize: "0.82rem", fontWeight: 600 }}>
-                        <input type="radio" name={`cert_${c.key}`} value={v} checked={rec.presente === v} onChange={() => updateCert(c.key, "presente", v)} style={{ accentColor: GREEN }} />
+                      <label key={v} style={{ display: "flex", alignItems: "center", gap: 5, cursor: certAllowed ? "pointer" : "not-allowed", padding: "5px 12px", borderRadius: 6, border: `1.5px solid ${!certAllowed ? "#cbd5e1" : rec.presente === v ? GREEN : "#e5e7eb"}`, background: !certAllowed ? "#f1f5f9" : rec.presente === v ? `${GREEN}0d` : "#fff", color: certAllowed ? "#111827" : "#64748b", fontSize: "0.82rem", fontWeight: 600 }}>
+                        <input type="radio" name={`cert_${c.key}`} value={v} checked={rec.presente === v} onChange={() => updateCertPresence(c.key, v)} disabled={!certAllowed} style={{ accentColor: GREEN }} />
                         {v === "si" ? "Sì" : "No"}
                       </label>
                     ))}
@@ -572,7 +629,7 @@ export function RevampAlboBStep4CertificazioniPage() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginTop: 14 }}>
                     <div style={col}>
                       <span style={lbl}>Ente certificatore <span style={{ color: ERR }}>*</span></span>
-                      <input value={rec.enteCertificatore} onChange={e => updateCert(c.key, "enteCertificatore", e.target.value)} placeholder="Es. Bureau Veritas, DNV GL..." style={baseInput(!!enteErr)} />
+                      <input value={rec.enteCertificatore} onChange={e => updateCert(c.key, "enteCertificatore", e.target.value)} placeholder="Es. Bureau Veritas, DNV GL..." disabled={!certAllowed} style={baseInput(!!enteErr, !certAllowed)} />
                       {enteErr ? <span style={errTxt}>{enteErr}</span> : null}
                     </div>
                     <div style={col}>
@@ -585,12 +642,13 @@ export function RevampAlboBStep4CertificazioniPage() {
                           setManualErrors(prev => ({ ...prev, [`cert_${c.key}_scad`]: msg }));
                         }}
                         placeholder="MM/AAAA"
-                        style={baseInput(!!scadErr)}
+                        disabled={!certAllowed}
+                        style={baseInput(!!scadErr, !certAllowed)}
                       />
                       {scadErr ? <span style={errTxt}>{scadErr}</span> : null}
                     </div>
                     <div style={col}>
-                      <FileInput label="Certificato PDF" fileName={rec.fileName} onChange={handleCertificationFile(c.key)} uploading={uploadingField === `CERTIFICATION:${c.key}`} hintText="PDF max 5 MB" />
+                      <FileInput label="Certificato PDF" fileName={rec.fileName} onChange={handleCertificationFile(c.key)} uploading={uploadingField === `CERTIFICATION:${c.key}`} disabled={!certAllowed} hintText="PDF max 5 MB" />
                       {fileErr ? <span style={errTxt}>{fileErr}</span> : null}
                     </div>
                   </div>
@@ -682,7 +740,7 @@ export function RevampAlboBStep4CertificazioniPage() {
                   }}
                   placeholder="MM/AAAA"
                   disabled={!allowVisura}
-                  style={baseInput(!!errors.visuraScadenza)}
+                  style={baseInput(!!errors.visuraScadenza, !allowVisura)}
                 />
                 {errors.visuraScadenza ? <span style={errTxt}>{errors.visuraScadenza}</span> : null}
               </div>
@@ -701,7 +759,7 @@ export function RevampAlboBStep4CertificazioniPage() {
                   }}
                   placeholder="MM/AAAA"
                   disabled={!allowDurc}
-                  style={baseInput(!!errors.durcScadenza)}
+                  style={baseInput(!!errors.durcScadenza, !allowDurc)}
                 />
                 {errors.durcScadenza ? <span style={errTxt}>{errors.durcScadenza}</span> : null}
               </div>
@@ -711,7 +769,7 @@ export function RevampAlboBStep4CertificazioniPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <FileInput label="Company profile / presentazione aziendale" fileName={companyProf} onChange={handleFile("COMPANY_PROFILE", setCompanyProf, setCompanyProfAttachment, 10)} uploading={uploadingField === "COMPANY_PROFILE"} disabled={!allowCompanyProfile} hintText="PDF max 10 MB — consigliato" />
             <div style={col}>
-              <FileInput label="Certificati ISO e accreditamenti" fileName={certAlleg} onChange={handleFile("CERTIFICATION", setCertAlleg, setCertAllegAttachment, 10)} uploading={uploadingField === "CERTIFICATION"} disabled={!allowCertAttachments} hintText="PDF — un file per certificato (o archivio ZIP)" />
+              <FileInput label="Certificati ISO e accreditamenti" fileName={certAlleg} onChange={handleFile("CERTIFICATION", setCertAlleg, setCertAllegAttachment, 10)} uploading={uploadingField === "CERTIFICATION"} disabled={!allowCertAttachments || !allowGenericCertAttachment} hintText="PDF — un file per certificato (o archivio ZIP)" />
               {errors.certAlleg ? <span style={errTxt}>{errors.certAlleg}</span> : null}
             </div>
           </div>

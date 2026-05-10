@@ -1,5 +1,6 @@
 package com.supplierplatform.revamp.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.supplierplatform.common.EntityNotFoundException;
 import com.supplierplatform.revamp.dto.ComposeEmailRequest;
 import com.supplierplatform.revamp.dto.RevampAuditEventInputDto;
@@ -32,8 +33,15 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.Comparator;
@@ -43,6 +51,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class RevampSupplierProfileService {
+    private static final DateTimeFormatter MONTH_YEAR = DateTimeFormatter.ofPattern("MM/yyyy");
 
     private static final String ENTITY_TYPE = "REVAMP_SUPPLIER_PROFILE";
     private static final List<FieldChangeRequestStatus> PENDING_FIELD_CHANGE_STATUSES = List.of(
@@ -243,7 +252,7 @@ public class RevampSupplierProfileService {
             sender.send(message);
             notificationEventService.markSent(event.getId(), null);
         } catch (Exception ex) {
-            notificationEventService.markFailed(event.getId());
+            notificationEventService.markFailed(event.getId(), notificationEventService.failureReason(ex));
             throw new IllegalStateException("Failed to send email: " + ex.getMessage(), ex);
         }
     }
@@ -343,6 +352,11 @@ public class RevampSupplierProfileService {
         List<String> expiredDocuments = profile.getApplication() == null || profile.getApplication().getId() == null
                 ? List.of()
                 : documentRenewalRequestService.expiredWithoutResponseLabels(profile.getApplication().getId());
+        LocalDateTime effectiveExpiresAt = profile.getExpiresAt() != null
+                ? profile.getExpiresAt()
+                : findNearestExpiry(projected != null ? projected.path("sections") : null)
+                .map(LocalDate::atStartOfDay)
+                .orElse(null);
         return new RevampSupplierProfileDto(
                 profile.getId(),
                 profile.getApplication() != null ? profile.getApplication().getId() : null,
@@ -355,7 +369,7 @@ public class RevampSupplierProfileService {
                 profile.getAggregateScore(),
                 Boolean.TRUE.equals(profile.getIsVisible()),
                 profile.getApprovedAt(),
-                profile.getExpiresAt(),
+                effectiveExpiresAt,
                 profile.getCreatedAt(),
                 profile.getUpdatedAt(),
                 publicCardView,
@@ -366,6 +380,63 @@ public class RevampSupplierProfileService {
                 pendingRenewals,
                 expiredDocuments
         );
+    }
+
+    private Optional<LocalDate> findNearestExpiry(JsonNode node) {
+        return streamExpiryDates(node).min(LocalDate::compareTo);
+    }
+
+    private java.util.stream.Stream<LocalDate> streamExpiryDates(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return java.util.stream.Stream.empty();
+        }
+        if (node.isObject()) {
+            java.util.stream.Stream.Builder<LocalDate> dates = java.util.stream.Stream.builder();
+            node.fields().forEachRemaining(entry -> {
+                String key = entry.getKey();
+                JsonNode value = entry.getValue();
+                if (isExpiryField(key)) {
+                    parseExpiryDate(value.asText(null)).ifPresent(dates);
+                }
+                streamExpiryDates(value).forEach(dates);
+            });
+            return dates.build();
+        }
+        if (node.isArray()) {
+            Iterable<JsonNode> iterable = node::elements;
+            return java.util.stream.StreamSupport.stream(iterable.spliterator(), false)
+                    .flatMap(this::streamExpiryDates);
+        }
+        return java.util.stream.Stream.empty();
+    }
+
+    private boolean isExpiryField(String key) {
+        if (key == null) return false;
+        String normalized = key.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("expiresat")
+                || normalized.equals("expirydate")
+                || normalized.equals("iddocumentexpiry")
+                || normalized.equals("scadenza");
+    }
+
+    private Optional<LocalDate> parseExpiryDate(String raw) {
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        String value = raw.trim();
+        try {
+            return Optional.of(LocalDate.parse(value));
+        } catch (DateTimeParseException ignored) {
+            // Try next supported format.
+        }
+        try {
+            return Optional.of(LocalDateTime.parse(value).toLocalDate());
+        } catch (DateTimeParseException ignored) {
+            // Try next supported format.
+        }
+        try {
+            return Optional.of(YearMonth.parse(value, MONTH_YEAR).atEndOfMonth());
+        } catch (DateTimeParseException ignored) {
+            return Optional.empty();
+        }
     }
 
     private RevampSupplierProfileTimelineEventDto toTimelineDto(RevampAuditEventSummaryDto event) {

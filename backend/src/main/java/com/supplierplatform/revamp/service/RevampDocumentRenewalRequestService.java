@@ -43,6 +43,7 @@ public class RevampDocumentRenewalRequestService {
     private final RevampReviewCaseRepository reviewCaseRepository;
     private final RevampAuditService auditService;
     private final RevampGovernanceAuthorizationService governanceAuthorizationService;
+    private final RevampDocumentRenewalRequestMailService documentRenewalRequestMailService;
     private final ObjectMapper objectMapper;
 
     public RevampDocumentRenewalRequestService(
@@ -52,6 +53,7 @@ public class RevampDocumentRenewalRequestService {
             RevampReviewCaseRepository reviewCaseRepository,
             RevampAuditService auditService,
             RevampGovernanceAuthorizationService governanceAuthorizationService,
+            RevampDocumentRenewalRequestMailService documentRenewalRequestMailService,
             ObjectMapper objectMapper
     ) {
         this.renewalRepository = renewalRepository;
@@ -60,6 +62,7 @@ public class RevampDocumentRenewalRequestService {
         this.reviewCaseRepository = reviewCaseRepository;
         this.auditService = auditService;
         this.governanceAuthorizationService = governanceAuthorizationService;
+        this.documentRenewalRequestMailService = documentRenewalRequestMailService;
         this.objectMapper = objectMapper;
     }
 
@@ -173,9 +176,9 @@ public class RevampDocumentRenewalRequestService {
             RevampApplicationSection latest = sectionRepository
                     .findByApplicationIdAndSectionKeyAndIsLatestTrue(application.getId(), request.getSectionKey())
                     .orElseThrow(() -> new IllegalStateException("Section not found for document renewal."));
-            JsonNode newAttachment = findMatchingAttachment(latest.getPayloadJson(), request);
+            JsonNode newAttachment = findRenewalEvidence(latest.getPayloadJson(), request);
             if (newAttachment == null || newAttachment.isMissingNode() || newAttachment.isNull()) {
-                throw new IllegalStateException("Upload the requested document before submitting: " + request.getDocumentLabel());
+                throw new IllegalStateException("Upload or update the requested document before submitting: " + request.getDocumentLabel());
             }
 
             request.setNewAttachmentJson(newAttachment.deepCopy());
@@ -219,9 +222,9 @@ public class RevampDocumentRenewalRequestService {
         RevampApplicationSection latest = sectionRepository
                 .findByApplicationIdAndSectionKeyAndIsLatestTrue(application.getId(), request.getSectionKey())
                 .orElseThrow(() -> new IllegalStateException("Section not found for document renewal."));
-        JsonNode newAttachment = findMatchingAttachment(latest.getPayloadJson(), request);
+        JsonNode newAttachment = findRenewalEvidence(latest.getPayloadJson(), request);
         if (newAttachment == null || newAttachment.isMissingNode() || newAttachment.isNull()) {
-            throw new IllegalStateException("Upload the requested document before submitting.");
+            throw new IllegalStateException("Upload or update the requested document before submitting.");
         }
 
         RevampReviewCase reviewCase = new RevampReviewCase();
@@ -264,8 +267,22 @@ public class RevampDocumentRenewalRequestService {
     }
 
     @Transactional
-    public void handleReviewDecision(UUID reviewCaseId, ReviewDecision decision, UUID decidedByUserId) {
-        List<RevampDocumentRenewalRequest> requests = renewalRepository.findByReviewCaseId(reviewCaseId);
+    public void markUnderReviewForReviewCases(List<UUID> reviewCaseIds) {
+        if (reviewCaseIds == null || reviewCaseIds.isEmpty()) return;
+        reviewCaseIds.forEach(this::markUnderReview);
+    }
+
+    @Transactional
+    public void handleReviewDecision(UUID reviewCaseId, ReviewDecision decision, UUID decidedByUserId, String reason) {
+        handleReviewDecisionForReviewCases(List.of(reviewCaseId), decision, decidedByUserId, reason);
+    }
+
+    @Transactional
+    public void handleReviewDecisionForReviewCases(List<UUID> reviewCaseIds, ReviewDecision decision, UUID decidedByUserId, String reason) {
+        List<RevampDocumentRenewalRequest> requests = reviewCaseIds == null ? List.of() : reviewCaseIds.stream()
+                .flatMap(reviewCaseId -> renewalRepository.findByReviewCaseId(reviewCaseId).stream())
+                .distinct()
+                .toList();
         if (requests.isEmpty()) {
             return;
         }
@@ -293,15 +310,46 @@ public class RevampDocumentRenewalRequestService {
                     "{\"status\":\"UNDER_REVIEW\"}",
                     "{\"status\":\"" + request.getStatus().name() + "\"}",
                     "{\"applicationId\":\"" + application.getId()
-                            + "\",\"reviewCaseId\":\"" + reviewCaseId
+                            + "\",\"reviewCaseId\":\"" + (request.getReviewCase() != null ? request.getReviewCase().getId() : "")
                             + "\",\"documentLabel\":\"" + esc(request.getDocumentLabel()) + "\"}"
             ));
         }
+        documentRenewalRequestMailService.sendOutcomeNotice(requests, decision, reason);
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> labelsForReviewCase(UUID reviewCaseId) {
+        return renewalRepository.findByReviewCaseId(reviewCaseId)
+                .stream()
+                .map(RevampDocumentRenewalRequest::getDocumentLabel)
+                .filter(label -> label != null && !label.isBlank())
+                .distinct()
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public boolean hasReviewCase(UUID reviewCaseId) {
         return !renewalRepository.findByReviewCaseId(reviewCaseId).isEmpty();
+    }
+
+    @Transactional(readOnly = true)
+    public List<UUID> activeReviewCaseIdsForApplication(UUID applicationId, UUID includeReviewCaseId) {
+        if (applicationId == null) return includeReviewCaseId == null ? List.of() : List.of(includeReviewCaseId);
+        List<UUID> activeIds = renewalRepository.findByApplicationIdAndStatusIn(
+                        applicationId,
+                        List.of(DocumentRenewalRequestStatus.SUBMITTED, DocumentRenewalRequestStatus.UNDER_REVIEW)
+                )
+                .stream()
+                .map(RevampDocumentRenewalRequest::getReviewCase)
+                .filter(reviewCase -> reviewCase != null && reviewCase.getId() != null)
+                .map(RevampReviewCase::getId)
+                .toList();
+        if (includeReviewCaseId == null) {
+            return activeIds.stream().distinct().toList();
+        }
+        return java.util.stream.Stream.concat(activeIds.stream(), java.util.stream.Stream.of(includeReviewCaseId))
+                .distinct()
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -336,18 +384,38 @@ public class RevampDocumentRenewalRequestService {
         sectionRepository
                 .findByApplicationIdAndSectionKeyAndIsLatestTrue(request.getApplication().getId(), request.getSectionKey())
                 .ifPresent(section -> {
-                    JsonNode restored = RevampDocumentRenewalJson.replaceMatchingDocument(
-                            objectMapper,
-                            section.getPayloadJson(),
-                            request.getApplication() != null ? request.getApplication().getRegistryType() : null,
-                            request.getSectionKey(),
-                            request.getDocumentType(),
-                            request.getCertificationKey(),
-                            request.getOldAttachmentJson()
-                    );
+                    JsonNode restored = "S4".equals(request.getSectionKey())
+                            && "CERTIFICATION".equals(request.getDocumentType())
+                            && request.getCertificationKey() != null
+                            && !request.getCertificationKey().isBlank()
+                            ? RevampDocumentRenewalJson.restoreCertificationRenewal(
+                                    objectMapper,
+                                    section.getPayloadJson(),
+                                    request.getCertificationKey(),
+                                    request.getOldAttachmentJson()
+                            )
+                            : RevampDocumentRenewalJson.replaceMatchingDocument(
+                                    objectMapper,
+                                    section.getPayloadJson(),
+                                    request.getApplication() != null ? request.getApplication().getRegistryType() : null,
+                                    request.getSectionKey(),
+                                    request.getDocumentType(),
+                                    request.getCertificationKey(),
+                                    request.getOldAttachmentJson()
+                            );
                     section.setPayloadJson(restored);
                     sectionRepository.save(section);
                 });
+    }
+
+    private JsonNode findRenewalEvidence(JsonNode payload, RevampDocumentRenewalRequest request) {
+        return RevampDocumentRenewalJson.findRenewalEvidence(
+                payload,
+                request.getApplication() != null ? request.getApplication().getRegistryType() : null,
+                request.getSectionKey(),
+                request.getDocumentType(),
+                request.getCertificationKey()
+        );
     }
 
     private JsonNode findMatchingAttachment(JsonNode payload, RevampDocumentRenewalRequest request) {

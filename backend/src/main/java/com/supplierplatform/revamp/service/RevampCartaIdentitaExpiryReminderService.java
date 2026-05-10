@@ -29,6 +29,7 @@ public class RevampCartaIdentitaExpiryReminderService {
     private final RevampAuditEventRepository auditEventRepository;
     private final RevampAuditService auditService;
     private final RevampCartaIdentitaMailService mailService;
+    private final RevampDocumentRenewalRequestService documentRenewalRequestService;
 
     @Value("${app.reminders.carta-identita-expiry.enabled:true}")
     private boolean enabled;
@@ -84,6 +85,17 @@ public class RevampCartaIdentitaExpiryReminderService {
                     mailService.sendExpiryReminder(recipientEmail, expiryDate);
 
             if (result.sent()) {
+                documentRenewalRequestService.createReminderIfAbsent(
+                        applicationId,
+                        REQUEST_ID + "-" + applicationId,
+                        "S1",
+                        "ID_DOCUMENT",
+                        "Carta d'identita",
+                        "ID_DOCUMENT",
+                        null,
+                        payload.path("profilePhotoAttachment").deepCopy(),
+                        expiryDate
+                );
                 sent++;
                 auditService.append(new RevampAuditEventInputDto(
                         EVENT_KEY,

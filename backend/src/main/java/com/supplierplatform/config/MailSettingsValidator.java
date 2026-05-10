@@ -8,6 +8,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class MailSettingsValidator implements ApplicationRunner {
 
+    private final CentralizedJavaMailSender centralizedJavaMailSender;
+
+    public MailSettingsValidator(CentralizedJavaMailSender centralizedJavaMailSender) {
+        this.centralizedJavaMailSender = centralizedJavaMailSender;
+    }
+
     @Value("${app.mail.fail-fast:false}")
     private boolean failFastEnabled;
 
@@ -16,12 +22,6 @@ public class MailSettingsValidator implements ApplicationRunner {
 
     @Value("${app.reviews.status-mail.enabled:true}")
     private boolean reviewStatusMailEnabled;
-
-    @Value("${spring.mail.username:}")
-    private String mailUsername;
-
-    @Value("${spring.mail.password:}")
-    private String mailPassword;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -34,15 +34,11 @@ public class MailSettingsValidator implements ApplicationRunner {
             return;
         }
 
-        if (isBlank(mailUsername) || isBlank(mailPassword)) {
+        if (!centralizedJavaMailSender.hasConfiguredCredentials()) {
             throw new IllegalStateException(
                     "Mail features are enabled but spring.mail.username/password are not configured. " +
-                            "Set MAIL_USERNAME and MAIL_PASSWORD (or disable mail features)."
+                            "Set SMTP config or MAIL_USERNAME and MAIL_PASSWORD (or disable mail features)."
             );
         }
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
     }
 }

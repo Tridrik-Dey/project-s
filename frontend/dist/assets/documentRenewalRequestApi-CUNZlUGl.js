@@ -1,0 +1,1 @@
+import{b as n}from"./index-DVENrf29.js";const s="/api/v2/document-renewal-requests";function i(e,t){return n(`${s}/applications/${e}`,{},t)}function u(e,t,o){return n(`${s}/applications/${e}/batches/${encodeURIComponent(t)}/submit`,{method:"POST"},o)}export{i as l,u as s};

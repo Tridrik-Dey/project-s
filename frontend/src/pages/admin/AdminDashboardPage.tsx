@@ -3,6 +3,7 @@ import { HttpError } from "../../api/http";
 import { getAdminReportKpis, type AdminReportKpis } from "../../api/adminReportApi";
 import { getAdminReviewQueue, type AdminReviewCaseSummary } from "../../api/adminReviewApi";
 import { getAdminAuditEvents, type AdminAuditEventRow } from "../../api/adminAuditApi";
+import { listAdminProfiles, type AdminRegistryProfileRow } from "../../api/adminProfilesApi";
 import { listPendingAdminFieldChangeRequests } from "../../api/fieldChangeRequestApi";
 import type { AdminRole } from "../../api/adminUsersRolesApi";
 import { useAuth } from "../../auth/AuthContext";
@@ -11,6 +12,7 @@ import { useAdminRealtimeRefresh } from "../../hooks/useAdminRealtimeRefresh";
 import { AdminCandidatureShell } from "./AdminCandidatureShell";
 import {
   SuperAdminDashboardPage,
+  type SuperAdminAlboMetrics,
   type SuperAdminRecentActivityItem,
   type SuperAdminMonthTrendPoint
 } from "./SuperAdminDashboardPage";
@@ -22,6 +24,18 @@ const EMPTY_KPIS: AdminReportKpis = {
   submittedApplications: 0,
   pendingInvites: 0
 };
+
+const EMPTY_ALBO_METRICS: SuperAdminAlboMetrics = {
+  approvalRate30d: 0,
+  approved30d: 0,
+  decided30d: 0,
+  avgReviewCloseDays30d: 0,
+  closedReviews30d: 0,
+  expiringProfiles30d: 0
+};
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 type AdminDashboardCapabilities = {
   canReadKpis: boolean;
@@ -51,6 +65,7 @@ export function AdminDashboardPage() {
   const [queue, setQueue] = useState<AdminReviewCaseSummary[]>([]);
   const [recentActivity, setRecentActivity] = useState<SuperAdminRecentActivityItem[]>([]);
   const [monthTrend, setMonthTrend] = useState<SuperAdminMonthTrendPoint[]>([]);
+  const [alboMetrics, setAlboMetrics] = useState<SuperAdminAlboMetrics>(EMPTY_ALBO_METRICS);
   const [pendingFieldChangeCount, setPendingFieldChangeCount] = useState(0);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -288,12 +303,19 @@ export function AdminDashboardPage() {
       monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
     }
     const counts = new Map<string, number>(monthKeys.map((key) => [key, 0]));
-    [...queueItems.map((i) => i.updatedAt), ...auditItems.map((i) => i.occurredAt)].forEach((raw) => {
-      const parsed = Date.parse(raw);
+    const countedApplications = new Set<string>();
+    auditItems
+      .filter((item) => item.eventKey === "revamp.application.submitted" && item.entityId)
+      .forEach((item) => {
+      if (countedApplications.has(item.entityId)) return;
+      const parsed = Date.parse(item.occurredAt);
       if (!Number.isFinite(parsed)) return;
       const d = new Date(parsed);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      if (counts.has(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
+      if (counts.has(key)) {
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+        countedApplications.add(item.entityId);
+      }
     });
     return monthKeys.map((key) => {
       const [year, month] = key.split("-");
@@ -306,6 +328,78 @@ export function AdminDashboardPage() {
     });
   }
 
+  function buildAlboMetrics(
+    auditItems: AdminAuditEventRow[],
+    profileRows: AdminRegistryProfileRow[]
+  ): SuperAdminAlboMetrics {
+    const now = Date.now();
+    const cutoff = now - THIRTY_DAYS_MS;
+    const decisionEvents30d = auditItems.filter((item) => {
+      if (item.eventKey !== "revamp.review.decided") return false;
+      const occurredAt = Date.parse(item.occurredAt);
+      if (!Number.isFinite(occurredAt) || occurredAt < cutoff) return false;
+      const decision = parseAuditMeta(item.metadataJson).decision;
+      return decision === "APPROVED" || decision === "REJECTED";
+    });
+    const approved30d = decisionEvents30d.filter((item) => parseAuditMeta(item.metadataJson).decision === "APPROVED").length;
+    const decided30d = decisionEvents30d.length;
+    const approvalRate30d = decided30d === 0 ? 0 : Math.round((approved30d / decided30d) * 100);
+
+    const startByApplication = new Map<string, number>();
+    [...auditItems]
+      .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt))
+      .forEach((item) => {
+        if (!item.entityId) return;
+        if (item.eventKey !== "revamp.application.submitted" && item.eventKey !== "revamp.review.opened") return;
+        const occurredAt = Date.parse(item.occurredAt);
+        if (!Number.isFinite(occurredAt)) return;
+        const existing = startByApplication.get(item.entityId);
+        if (existing === undefined || occurredAt < existing) {
+          startByApplication.set(item.entityId, occurredAt);
+        }
+      });
+
+    const closeDurations = decisionEvents30d
+      .map((item) => {
+        if (!item.entityId) return null;
+        const startAt = startByApplication.get(item.entityId);
+        const decidedAt = Date.parse(item.occurredAt);
+        if (startAt === undefined || !Number.isFinite(decidedAt) || decidedAt < startAt) return null;
+        return (decidedAt - startAt) / DAY_MS;
+      })
+      .filter((value): value is number => value !== null);
+    const avgReviewCloseDays30d = closeDurations.length === 0
+      ? 0
+      : Math.round(closeDurations.reduce((acc, value) => acc + value, 0) / closeDurations.length);
+
+    const expiryLimit = now + THIRTY_DAYS_MS;
+    const expiringProfiles30d = profileRows.filter((profile) => {
+      if (profile.status !== "APPROVED" && profile.status !== "RENEWAL_DUE") return false;
+      if (profile.pendingDocumentRenewal || (profile.expiredDocumentLabels?.length ?? 0) > 0) return true;
+      if (!profile.expiresAt) return false;
+      const expiresAt = Date.parse(profile.expiresAt);
+      return Number.isFinite(expiresAt) && expiresAt <= expiryLimit;
+    }).length;
+
+    return {
+      approvalRate30d,
+      approved30d,
+      decided30d,
+      avgReviewCloseDays30d,
+      closedReviews30d: closeDurations.length,
+      expiringProfiles30d
+    };
+  }
+
+  const loadRegistryProfilesForMetrics = useCallback(async (): Promise<AdminRegistryProfileRow[]> => {
+    if (!capabilities.canReadKpis) return [];
+    const [alboA, alboB] = await Promise.all([
+      listAdminProfiles(token, { registryType: "ALBO_A", page: 0, size: 1000 }).catch(() => ({ content: [] as AdminRegistryProfileRow[] })),
+      listAdminProfiles(token, { registryType: "ALBO_B", page: 0, size: 1000 }).catch(() => ({ content: [] as AdminRegistryProfileRow[] }))
+    ]);
+    return [...alboA.content, ...alboB.content];
+  }, [capabilities.canReadKpis, token]);
+
   const loadDashboard = useCallback(async (showLoading = true) => {
     if (!token || adminRoleLoading) return;
     if (!capabilities.canReadKpis && !capabilities.canReadAudit && !capabilities.canReadQueue) {
@@ -313,6 +407,7 @@ export function AdminDashboardPage() {
       setQueue([]);
       setRecentActivity([]);
       setMonthTrend([]);
+      setAlboMetrics(EMPTY_ALBO_METRICS);
       setPendingFieldChangeCount(0);
       return;
     }
@@ -325,17 +420,19 @@ export function AdminDashboardPage() {
     dashboardRefreshInFlightRef.current = true;
     if (showLoading) setLoading(true);
     try {
-      const [kpisData, queueData, auditData, fieldChangeRows] = await Promise.all([
+      const [kpisData, queueData, auditData, fieldChangeRows, profileRows] = await Promise.all([
         capabilities.canReadKpis ? getAdminReportKpis(token) : Promise.resolve(EMPTY_KPIS),
         capabilities.canReadQueue ? getAdminReviewQueue(token) : Promise.resolve([] as AdminReviewCaseSummary[]),
         capabilities.canReadAudit ? getAdminAuditEvents(token).catch(() => [] as AdminAuditEventRow[]) : Promise.resolve([] as AdminAuditEventRow[]),
-        capabilities.canManageFieldChanges ? listPendingAdminFieldChangeRequests(token).catch(() => []) : Promise.resolve([])
+        capabilities.canManageFieldChanges ? listPendingAdminFieldChangeRequests(token).catch(() => []) : Promise.resolve([]),
+        loadRegistryProfilesForMetrics()
       ]);
       setKpis(kpisData);
       const sortedQueue = [...queueData].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
       setQueue(sortedQueue);
       setRecentActivity(mapAuditToRecent(auditData));
       setMonthTrend(buildMonthTrend(sortedQueue, auditData));
+      setAlboMetrics(buildAlboMetrics(auditData, profileRows));
       setPendingFieldChangeCount(fieldChangeRows.length);
       setLastUpdatedAt(new Date().toISOString());
     } catch (error) {
@@ -343,6 +440,7 @@ export function AdminDashboardPage() {
       if (!message.toLowerCase().includes("access denied") && !message.toLowerCase().includes("invalid governance")) {
         setKpis(EMPTY_KPIS);
         setQueue([]);
+        setAlboMetrics(EMPTY_ALBO_METRICS);
       }
     } finally {
       dashboardRefreshInFlightRef.current = false;
@@ -358,6 +456,7 @@ export function AdminDashboardPage() {
     capabilities.canReadKpis,
     capabilities.canReadQueue,
     capabilities.canManageFieldChanges,
+    loadRegistryProfilesForMetrics,
     token
   ]);
 
@@ -390,6 +489,7 @@ export function AdminDashboardPage() {
       queue={queue}
       recentActivity={recentActivity}
       monthTrend={monthTrend}
+      alboMetrics={alboMetrics}
       lastUpdatedAt={lastUpdatedAt}
       loading={loading}
       canManageInvites={canManageInvites}

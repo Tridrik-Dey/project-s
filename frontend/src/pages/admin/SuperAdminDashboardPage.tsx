@@ -24,12 +24,22 @@ export interface SuperAdminMonthTrendPoint {
   count: number;
 }
 
+export interface SuperAdminAlboMetrics {
+  approvalRate30d: number;
+  approved30d: number;
+  decided30d: number;
+  avgReviewCloseDays30d: number;
+  closedReviews30d: number;
+  expiringProfiles30d: number;
+}
+
 interface SuperAdminDashboardPageProps {
   adminRole: AdminRole;
   kpis: AdminReportKpis;
   queue: AdminReviewCaseSummary[];
   recentActivity: SuperAdminRecentActivityItem[];
   monthTrend: SuperAdminMonthTrendPoint[];
+  alboMetrics: SuperAdminAlboMetrics;
   lastUpdatedAt: string | null;
   loading: boolean;
   canManageInvites: boolean;
@@ -118,6 +128,7 @@ export function SuperAdminDashboardPage({
   queue,
   recentActivity,
   monthTrend,
+  alboMetrics,
   lastUpdatedAt,
   loading,
   canManageInvites,
@@ -129,12 +140,9 @@ export function SuperAdminDashboardPage({
   const recent = recentActivity.slice(0, 8);
   const pendingRevision = queue.filter((item) => item.status === "PENDING_ASSIGNMENT" || item.status === "IN_PROGRESS").slice(0, 6);
   const overdueCount = queue.filter((item) => item.status !== "DECIDED").length;
-  const expiringProfilesCount = Math.max(0, kpis.pendingSuppliers);
-  const avgReviewDays = queue.length === 0 ? 0 : Math.round(
-    queue.reduce((acc, item) => acc + Math.max(0, Math.floor((Date.now() - Date.parse(item.updatedAt)) / (1000 * 60 * 60 * 24))), 0) / queue.length
-  );
-  const decidedCount = queue.filter((item) => item.status === "DECIDED").length;
-  const approvalRate = queue.length === 0 ? 0 : Math.round((decidedCount / queue.length) * 100);
+  const expiringProfilesCount = Math.max(0, alboMetrics.expiringProfiles30d);
+  const avgReviewDays = Math.max(0, alboMetrics.avgReviewCloseDays30d);
+  const approvalRate = Math.max(0, Math.min(100, alboMetrics.approvalRate30d));
   const [chartType, setChartType] = useState<ChartType>("bar");
   const [chartWindow, setChartWindow] = useState<ChartWindow>("halfyearly");
   const [chartSettingsOpen, setChartSettingsOpen] = useState(false);
@@ -151,10 +159,13 @@ export function SuperAdminDashboardPage({
     ? Math.round((monthDelta / previousMonth.count) * 100)
     : null;
 
-  const approvalStatus = queue.length === 0 ? "Nessun dato" : approvalRate === 0 ? "Da monitorare" : approvalRate >= 60 ? "Buono" : "Attenzione";
-  const reviewStatus = avgReviewDays === 0 ? "Nessuna revisione conclusa" : avgReviewDays <= 5 ? "In linea" : "Da migliorare";
+  const approvalStatus = alboMetrics.decided30d === 0 ? "Nessun dato" : approvalRate === 0 ? "Da monitorare" : approvalRate >= 60 ? "Buono" : "Attenzione";
+  const reviewStatus = alboMetrics.closedReviews30d === 0 ? "Nessuna revisione conclusa" : avgReviewDays <= 5 ? "In linea" : "Da migliorare";
   const expiryStatus = expiringProfilesCount === 0 ? "Sotto controllo" : expiringProfilesCount <= 5 ? "Attenzione" : "Priorita alta";
-  const approvalMeter = Math.max(8, approvalRate);
+  const approvalMeter = alboMetrics.decided30d === 0 ? 0 : approvalRate;
+  const approvalSubtitle = alboMetrics.decided30d > 0
+    ? `Ultimi 30 giorni (${alboMetrics.approved30d}/${alboMetrics.decided30d})`
+    : "Ultimi 30 giorni";
   const chartWindowLabel = chartWindow === "quarterly" ? "ultimi 3 mesi" : chartWindow === "halfyearly" ? "ultimi 6 mesi" : "ultimo anno";
 
   const trendMessage = latestMonth && previousMonth
@@ -200,16 +211,6 @@ export function SuperAdminDashboardPage({
     }
   ].filter((item) => item.value > item.threshold);
   const topKpis = [
-    ...(pendingFieldChangeCount > 0 ? [{
-      id: "field-change",
-      title: "Modifiche dati",
-      value: pendingFieldChangeCount,
-      route: "/admin/candidature?tab=modifiche-dati",
-      icon: <ListChecks className="h-4 w-4" />,
-      trend: "da sbloccare",
-      levelLabel: "Richieste",
-      level: "attention" as const
-    }] : []),
     {
       id: "suppliers",
       title: "Fornitori attivi",
@@ -217,6 +218,7 @@ export function SuperAdminDashboardPage({
       route: "/admin/albo-a",
       icon: <Users className="h-4 w-4" />,
       trend: trendBadgeLabel,
+      tone: "ok",
       levelLabel: kpis.totalSuppliers === 0 ? "Da avviare" : "Operativo",
       level: kpis.totalSuppliers === 0 ? "info" : "ok"
     },
@@ -227,6 +229,7 @@ export function SuperAdminDashboardPage({
       route: "/admin/albo-b",
       icon: <Building2 className="h-4 w-4" />,
       trend: trendBadgeLabel,
+      tone: "ok",
       levelLabel: kpis.activeSuppliers === 0 ? "Da avviare" : "Operativo",
       level: kpis.activeSuppliers === 0 ? "info" : "ok"
     },
@@ -237,8 +240,20 @@ export function SuperAdminDashboardPage({
       route: "/admin/candidature",
       icon: <Clock3 className="h-4 w-4" />,
       trend: `${overdueCount} urgenze`,
+      tone: "attention",
       levelLabel: queueLevel === "ok" ? "Normale" : queueLevel === "attention" ? "Attenzione" : "Critico",
       level: queueLevel
+    },
+    {
+      id: "field-change",
+      title: "Modifiche dati",
+      value: pendingFieldChangeCount,
+      route: "/admin/candidature?tab=modifiche-dati",
+      icon: <ListChecks className="h-4 w-4" />,
+      trend: pendingFieldChangeCount > 0 ? "da sbloccare" : "nessuna richiesta",
+      tone: "attention",
+      levelLabel: pendingFieldChangeCount > 0 ? "Richieste" : "Normale",
+      level: pendingFieldChangeCount > 0 ? "attention" as const : "ok" as const
     },
     {
       id: "invites",
@@ -247,6 +262,7 @@ export function SuperAdminDashboardPage({
       route: "/admin/invites",
       icon: <Mail className="h-4 w-4" />,
       trend: "da seguire",
+      tone: "info",
       levelLabel: inviteLevel === "ok" ? "Normale" : inviteLevel === "attention" ? "Attenzione" : "Critico",
       level: inviteLevel
     },
@@ -257,6 +273,7 @@ export function SuperAdminDashboardPage({
       route: "/admin/evaluations",
       icon: <ClipboardCheck className="h-4 w-4" />,
       trend: kpis.submittedApplications > 0 ? "Attivita presente" : "Nessuna valutazione questo mese",
+      tone: "ok",
       levelLabel: kpis.submittedApplications > 0 ? "Operativo" : "Da avviare",
       level: kpis.submittedApplications > 0 ? "ok" : "info"
     }
@@ -380,7 +397,7 @@ export function SuperAdminDashboardPage({
 
         <div className="superadmin-kpis">
           {topKpis.map((item) => (
-            <Link key={item.id} to={item.route} className={`panel superadmin-kpi-card tone-${item.level}`}>
+            <Link key={item.id} to={item.route} className={`panel superadmin-kpi-card tone-${item.tone}`}>
               <div className="superadmin-kpi-head">
                 <h4>{item.title}</h4>
                 <span className="superadmin-kpi-icon" aria-hidden="true">{item.icon}</span>
@@ -572,25 +589,25 @@ export function SuperAdminDashboardPage({
               <div className="superadmin-metric-row">
                 <div className="superadmin-metric-copy">
                   <h4>Pratiche approvate</h4>
-                  <p>Ultimi 30 giorni</p>
+                  <p>{approvalSubtitle}</p>
                 </div>
                 <div className="superadmin-metric-value-wrap">
                   <strong>{approvalRate}%</strong>
-                  <span className={`superadmin-metric-state ${queue.length === 0 ? "state-info" : approvalRate === 0 ? "state-warn" : approvalRate >= 60 ? "state-ok" : "state-attention"}`}>{approvalStatus}</span>
+                  <span className={`superadmin-metric-state ${alboMetrics.decided30d === 0 ? "state-info" : approvalRate === 0 ? "state-warn" : approvalRate >= 60 ? "state-ok" : "state-attention"}`}>{approvalStatus}</span>
                 </div>
               </div>
               <div className="superadmin-metric-progress"><span style={{ width: `${approvalMeter}%` }} /></div>
-              <p className="superadmin-metric-progress-note">La linea mostra la percentuale reale.</p>
+              <p className="superadmin-metric-progress-note">La linea mostra gli esiti approvati sugli esiti finali.</p>
             </div>
             <div className="superadmin-metric-card tone-review">
               <div className="superadmin-metric-row">
                 <div className="superadmin-metric-copy">
                   <h4>Tempo medio per chiudere una revisione</h4>
-                  <p>Obiettivo: meno di 5 giorni</p>
+                  <p>Decisioni concluse negli ultimi 30 giorni</p>
                 </div>
                 <div className="superadmin-metric-value-wrap">
                   <strong>{avgReviewDays} gg</strong>
-                  <span className={`superadmin-metric-state ${avgReviewDays === 0 ? "state-info" : avgReviewDays <= 5 ? "state-ok" : "state-attention"}`}>{reviewStatus}</span>
+                  <span className={`superadmin-metric-state ${alboMetrics.closedReviews30d === 0 ? "state-info" : avgReviewDays <= 5 ? "state-ok" : "state-attention"}`}>{reviewStatus}</span>
                 </div>
               </div>
             </div>

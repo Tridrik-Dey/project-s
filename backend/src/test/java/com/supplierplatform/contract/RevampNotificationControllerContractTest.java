@@ -112,7 +112,8 @@ class RevampNotificationControllerContractTest {
                         "SENT",
                         0,
                         LocalDateTime.now(),
-                        LocalDateTime.now()
+                        LocalDateTime.now(),
+                        null
                 )));
 
         mockMvc.perform(get("/api/v2/notifications/events")
@@ -126,4 +127,3 @@ class RevampNotificationControllerContractTest {
     }
 
 }
-

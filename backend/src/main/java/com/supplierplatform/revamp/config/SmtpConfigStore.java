@@ -18,6 +18,7 @@ public class SmtpConfigStore {
 
     private volatile String email;
     private volatile String password;
+    private volatile boolean debugOtpEnabled;
 
     @PostConstruct
     public void load() {
@@ -26,7 +27,9 @@ public class SmtpConfigStore {
             var node = MAPPER.readTree(configPath.toFile());
             String e = node.path("email").asText(null);
             String p = node.path("password").asText(null);
+            boolean debugOtp = node.path("debugOtpEnabled").asBoolean(false);
             if (e != null && !e.isBlank()) { email = e; password = p; }
+            debugOtpEnabled = debugOtp;
         } catch (IOException ignored) {}
     }
 
@@ -36,10 +39,16 @@ public class SmtpConfigStore {
 
     public String getEmail() { return email; }
     public String getPassword() { return password; }
+    public boolean isDebugOtpEnabled() { return debugOtpEnabled; }
 
-    public synchronized void save(String newEmail, String newPassword) throws IOException {
-        MAPPER.writeValue(configPath.toFile(), Map.of("email", newEmail, "password", newPassword));
+    public synchronized void save(String newEmail, String newPassword, boolean newDebugOtpEnabled) throws IOException {
+        MAPPER.writeValue(configPath.toFile(), Map.of(
+                "email", newEmail,
+                "password", newPassword,
+                "debugOtpEnabled", newDebugOtpEnabled
+        ));
         this.email = newEmail;
         this.password = newPassword;
+        this.debugOtpEnabled = newDebugOtpEnabled;
     }
 }

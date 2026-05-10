@@ -1,6 +1,7 @@
 package com.supplierplatform.revamp.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record RevampReviewCaseSummaryDto(
@@ -38,7 +39,10 @@ public record RevampReviewCaseSummaryDto(
         String documentRenewalDocumentType,
         String documentRenewalDocumentLabel,
         String documentRenewalOldAttachmentJson,
-        String documentRenewalNewAttachmentJson
+        String documentRenewalNewAttachmentJson,
+        Integer documentRenewalSubmittedCount,
+        Integer documentRenewalPendingSupplierCount,
+        List<DocumentRenewalRequestDto> activeDocumentRenewalRequests
 ) {
     public RevampReviewCaseSummaryDto(
             UUID id,
@@ -91,7 +95,10 @@ public record RevampReviewCaseSummaryDto(
                 null,
                 null,
                 null,
-                null
+                null,
+                null,
+                null,
+                List.of()
         );
     }
 }

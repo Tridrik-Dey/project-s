@@ -23,9 +23,6 @@ public class RevampIntegrationRequestMailService {
     private final JavaMailSender javaMailSender;
     private final RevampNotificationEventService notificationEventService;
 
-    @Value("${app.reviews.status-mail.from:${spring.mail.username:no-reply@supplierplatform.local}}")
-    private String fromEmail;
-
     @Value("${app.frontend.base-url:http://127.0.0.1:5173}")
     private String frontendBaseUrl;
 
@@ -51,14 +48,13 @@ public class RevampIntegrationRequestMailService {
             var message = javaMailSender.createMimeMessage();
             var helper = new MimeMessageHelper(message, StandardCharsets.UTF_8.name());
             helper.setTo(recipient);
-            helper.setFrom(fromEmail);
             helper.setSubject("Richiesta integrazione - Albo Fornitori Digitale");
             helper.setText(buildBody(application), false);
             javaMailSender.send(message);
             notificationEventService.markSent(event.getId(), null);
             log.info("Integration request email sent to {} for application {}", recipient, application.getId());
         } catch (Exception ex) {
-            notificationEventService.markFailed(event.getId());
+            notificationEventService.markFailed(event.getId(), notificationEventService.failureReason(ex));
             log.error("Failed to send integration request email to {} for application {}", recipient, application.getId(), ex);
         }
     }

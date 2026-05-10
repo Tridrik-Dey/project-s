@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, Clock3, ExternalLink, FileText, History, Info, MessageSquare, RefreshCw, Save, XCircle } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getAdminAuditEvents, type AdminAuditEventRow } from "../../api/adminAuditApi";
 import type { DashboardActivityEvent } from "../../api/adminDashboardEventsApi";
 import { type AdminRole } from "../../api/adminUsersRolesApi";
@@ -14,6 +14,8 @@ import {
   type AdminIntegrationRequestSummary,
   type AdminReviewCaseSummary
 } from "../../api/adminReviewApi";
+import type { DocumentRenewalRequest } from "../../api/documentRenewalRequestApi";
+import { listFieldChangeRequests, type FieldChangeRequest } from "../../api/fieldChangeRequestApi";
 import { useAuth } from "../../auth/AuthContext";
 import { AppToast } from "../../components/ui/toast";
 import { useAdminGovernanceRole } from "../../hooks/useAdminGovernanceRole";
@@ -25,6 +27,17 @@ type DecisionAction = "APPROVED" | "REJECTED";
 type VerificationOutcome = "COMPLIANT" | "COMPLIANT_WITH_RESERVATIONS" | "INCOMPLETE" | "NON_COMPLIANT";
 type SectionPayload = Record<string, unknown>;
 type DocumentRow = { id: string; label: string; sectionLabel: string; url: string | null; hasLink: boolean };
+type RenewalReviewRow = {
+  id: string;
+  label: string;
+  sectionLabel: string;
+  statusLabel: string;
+  tone: "ok" | "warn" | "danger" | "neutral";
+  submittedAt: string | null;
+  oldValue: string;
+  newValue: string;
+  expiry: string;
+};
 type ReviewTimelineEvent = {
   id: string;
   title: string;
@@ -175,6 +188,117 @@ function fieldChangeComparisonRows(fcr: AdminReviewCaseSummary | null): Array<{ 
     .filter((row) => row.before !== row.after);
 }
 
+function formatItalianDate(value: string | null | undefined): string {
+  const raw = (value ?? "").trim();
+  if (!raw) return "";
+  const parsed = Date.parse(raw);
+  if (Number.isFinite(parsed) && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    return new Date(parsed).toLocaleDateString("it-IT");
+  }
+  return raw;
+}
+
+function readNestedScalar(payload: SectionPayload | null, path: string[]): string {
+  let current: unknown = payload;
+  for (const key of path) {
+    if (!current || typeof current !== "object") return "";
+    current = (current as Record<string, unknown>)[key];
+  }
+  return toScalar(current);
+}
+
+function attachmentFileName(payload: SectionPayload | null): string {
+  return toScalar(payload?.fileName) || toScalar(payload?.name) || toScalar(payload?.originalFileName);
+}
+
+function renewalRequestStatusLabel(status: string | null | undefined): string {
+  if (status === "UNDER_REVIEW") return "In revisione";
+  if (status === "APPROVED") return "Approvato";
+  if (status === "REJECTED") return "Respinto";
+  if (status === "SUBMITTED") return "Inviato";
+  return "Da verificare";
+}
+
+function renewalRequestTone(status: string | null | undefined): RenewalReviewRow["tone"] {
+  if (status === "APPROVED") return "ok";
+  if (status === "REJECTED") return "danger";
+  if (status === "SUBMITTED" || status === "UNDER_REVIEW") return "warn";
+  return "neutral";
+}
+
+function renewalCurrentExpiry(item: DocumentRenewalRequest, newPayload: SectionPayload | null, s1Payload: SectionPayload | null, s4Payload: SectionPayload | null): string {
+  const direct = formatItalianDate(toScalar(newPayload?.scadenza) || toScalar(newPayload?.expiryDate) || item.expiryDate);
+  if (direct) return direct;
+  if (item.documentType === "ID_DOCUMENT") {
+    return formatItalianDate(
+      readNestedScalar(s1Payload, ["legalRepresentative", "idDocumentExpiry"])
+        || comparisonValue(s1Payload, "lrIdDocumentExpiry")
+        || comparisonValue(s1Payload, "idDocumentExpiry")
+    );
+  }
+  if (item.documentType === "CERTIFICATION" && item.certificationKey) {
+    const certs = s4Payload?.certificazioni;
+    if (certs && typeof certs === "object") {
+      const cert = (certs as Record<string, unknown>)[item.certificationKey];
+      if (cert && typeof cert === "object") {
+        return formatItalianDate(toScalar((cert as Record<string, unknown>).scadenza));
+      }
+    }
+  }
+  return "n/d";
+}
+
+function renewalReviewRows(
+  latestCase: AdminReviewCaseSummary | null,
+  s1Payload: SectionPayload | null,
+  s4Payload: SectionPayload | null
+): RenewalReviewRow[] {
+  if (latestCase?.reviewType !== "DOCUMENT_RENEWAL") return [];
+  const requests = latestCase.activeDocumentRenewalRequests?.length
+    ? latestCase.activeDocumentRenewalRequests
+    : latestCase.documentRenewalRequestId
+      ? [{
+          id: latestCase.documentRenewalRequestId,
+          applicationId: latestCase.applicationId,
+          reviewCaseId: latestCase.id,
+          sectionKey: latestCase.documentRenewalSectionKey ?? "",
+          batchId: "",
+          documentType: latestCase.documentRenewalDocumentType ?? "",
+          documentLabel: latestCase.documentRenewalDocumentLabel ?? "Documento",
+          integrationItemCode: "",
+          certificationKey: null,
+          expiryDate: null,
+          status: (latestCase.documentRenewalStatus ?? "SUBMITTED") as DocumentRenewalRequest["status"],
+          oldAttachmentJson: latestCase.documentRenewalOldAttachmentJson ?? null,
+          newAttachmentJson: latestCase.documentRenewalNewAttachmentJson ?? null,
+          submittedAt: null,
+          createdAt: latestCase.updatedAt,
+          updatedAt: latestCase.updatedAt,
+          expiredWithoutResponse: false
+        } satisfies DocumentRenewalRequest]
+      : [];
+  return requests
+    .filter((item) => ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "REJECTED"].includes(item.status))
+    .map((item) => {
+      const oldPayload = parsePayload(item.oldAttachmentJson ?? undefined);
+      const newPayload = parsePayload(item.newAttachmentJson ?? undefined);
+      const declined = item.documentType === "CERTIFICATION" && toScalar(newPayload?.presente).toLowerCase() === "no";
+      const oldFile = attachmentFileName(oldPayload);
+      const newFile = declined ? "Dichiarata non presente" : attachmentFileName(newPayload);
+      return {
+        id: item.id,
+        label: item.documentLabel || documentTypeLabel(item.documentType) || "Documento",
+        sectionLabel: sectionLabel(item.sectionKey || "S4"),
+        statusLabel: renewalRequestStatusLabel(item.status),
+        tone: renewalRequestTone(item.status),
+        submittedAt: item.submittedAt ?? item.updatedAt ?? item.createdAt ?? null,
+        oldValue: oldFile || "Valore precedente non disponibile",
+        newValue: newFile || "Aggiornamento salvato",
+        expiry: renewalCurrentExpiry(item, newPayload, s1Payload, s4Payload)
+      };
+    });
+}
+
 function findUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -227,6 +351,27 @@ function statusLabelOf(status: string | null | undefined): string {
 function statusToneOf(status: string | null | undefined): "ok" | "warn" | "danger" | "neutral" {
   if (status === "APPROVED") return "ok";
   if (status === "REJECTED") return "danger";
+  return "warn";
+}
+
+function renewalHeaderStatusLabel(reviewCase: AdminReviewCaseSummary | null): string {
+  if (reviewCase?.status === "DECIDED") {
+    if (reviewCase.decision === "APPROVED") return "Rinnovo documenti approvato";
+    if (reviewCase.decision === "REJECTED") return "Rinnovo documenti respinto";
+    return "Rinnovo documenti deciso";
+  }
+  if (reviewCase?.status === "READY_FOR_DECISION") return "Rinnovo documenti da decidere";
+  if (reviewCase?.status === "WAITING_SUPPLIER_RESPONSE") return "Rinnovo documenti in attesa fornitore";
+  if (reviewCase?.status === "PENDING_ASSIGNMENT") return "Rinnovo documenti da assegnare";
+  return "Rinnovo documenti in revisione";
+}
+
+function renewalHeaderStatusTone(reviewCase: AdminReviewCaseSummary | null): "ok" | "warn" | "danger" | "neutral" {
+  if (reviewCase?.status === "DECIDED") {
+    if (reviewCase.decision === "APPROVED") return "ok";
+    if (reviewCase.decision === "REJECTED") return "danger";
+    return "neutral";
+  }
   return "warn";
 }
 
@@ -323,16 +468,107 @@ function mapAuditToTimelineEvent(event: AdminAuditEventRow): ReviewTimelineEvent
 
   if (key === "revamp.review.decided") {
     const approved = meta.decision === "APPROVED";
+    const isRenewal = meta.reviewType === "DOCUMENT_RENEWAL";
     return {
       id: event.id,
-      title: "Decisione registrata",
-      badge: approved ? "Approvata" : "Non approvata",
+      title: isRenewal ? "Decisione rinnovo documenti" : "Decisione registrata",
+      badge: isRenewal
+        ? (approved ? "Rinnovo approvato" : "Rinnovo respinto")
+        : (approved ? "Approvata" : "Non approvata"),
       tone: approved ? "ok" : "danger",
-      detail: event.reason || undefined,
+      detail: isRenewal && meta.documents
+        ? meta.documents
+        : event.reason || undefined,
       occurredAt: event.occurredAt
     };
   }
 
+  return null;
+}
+
+function mapFcrAuditToTimelineEvent(event: AdminAuditEventRow): ReviewTimelineEvent | null {
+  const key = event.eventKey ?? "";
+  const meta = parseAuditRecord(event.metadataJson);
+  const sectionLabelValue = fieldChangeGroupLabel(meta.sectionKey);
+  const reason = event.reason || meta.reason || "";
+  const detailParts = [sectionLabelValue];
+
+  if (key === "fcr.created") {
+    if (meta.message) detailParts.push(meta.message);
+    return {
+      id: event.id,
+      title: "Richiesta modifica dati",
+      badge: "In attesa sblocco",
+      tone: "warn",
+      detail: detailParts.filter(Boolean).join(" - "),
+      occurredAt: event.occurredAt
+    };
+  }
+  if (key === "fcr.unlocked") {
+    if (reason) detailParts.push(reason);
+    return {
+      id: event.id,
+      title: "Modifica dati sbloccata",
+      badge: "Sbloccata",
+      tone: "neutral",
+      detail: detailParts.filter(Boolean).join(" - "),
+      occurredAt: event.occurredAt
+    };
+  }
+  if (key === "fcr.rejected_by_admin") {
+    if (reason) detailParts.push(reason);
+    return {
+      id: event.id,
+      title: "Richiesta modifica rifiutata",
+      badge: "Rifiutata",
+      tone: "danger",
+      detail: detailParts.filter(Boolean).join(" - "),
+      occurredAt: event.occurredAt
+    };
+  }
+  if (key === "fcr.cancelled_by_supplier") {
+    return {
+      id: event.id,
+      title: "Richiesta modifica annullata",
+      badge: "Annullata",
+      tone: "neutral",
+      detail: detailParts.filter(Boolean).join(" - "),
+      occurredAt: event.occurredAt
+    };
+  }
+  if (key === "fcr.submitted") {
+    return {
+      id: event.id,
+      title: "Modifica inviata dal fornitore",
+      badge: "In revisione",
+      tone: "warn",
+      detail: detailParts.filter(Boolean).join(" - "),
+      occurredAt: event.occurredAt
+    };
+  }
+  if (key === "fcr.approved") {
+    if (reason) detailParts.push(reason);
+    return {
+      id: event.id,
+      title: "Modifica dati approvata",
+      badge: "Approvata",
+      tone: "ok",
+      detail: detailParts.filter(Boolean).join(" - "),
+      occurredAt: event.occurredAt
+    };
+  }
+  if (key === "fcr.rejected") {
+    if (reason) detailParts.push(reason);
+    detailParts.push("Valore precedente mantenuto");
+    return {
+      id: event.id,
+      title: "Modifica dati respinta",
+      badge: "Respinta",
+      tone: "danger",
+      detail: detailParts.filter(Boolean).join(" - "),
+      occurredAt: event.occurredAt
+    };
+  }
   return null;
 }
 
@@ -346,14 +582,18 @@ function makeInitials(name: string): string {
 function shouldRefreshApplicationCase(event: DashboardActivityEvent, applicationId: string): boolean {
   const key = event.eventKey ?? "";
   return (
-    event.entityType === "REVAMP_APPLICATION"
-    && event.entityId === applicationId
-    && (key.startsWith("revamp.review.") || key.startsWith("revamp.application."))
+    (
+      event.entityType === "REVAMP_APPLICATION"
+      && event.entityId === applicationId
+      && (key.startsWith("revamp.review.") || key.startsWith("revamp.application."))
+    )
+    || key.startsWith("fcr.")
   );
 }
 
 export function AdminApplicationCasePage() {
   const { applicationId = "" } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { auth } = useAuth();
   const { adminRole } = useAdminGovernanceRole();
@@ -362,6 +602,7 @@ export function AdminApplicationCasePage() {
   const [sections, setSections] = useState<RevampSectionSnapshot[]>([]);
   const [reviewHistory, setReviewHistory] = useState<AdminReviewCaseSummary[]>([]);
   const [auditEvents, setAuditEvents] = useState<AdminAuditEventRow[]>([]);
+  const [fieldChangeAuditEvents, setFieldChangeAuditEvents] = useState<AdminAuditEventRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyAction, setBusyAction] = useState<DecisionAction | null>(null);
   const [latestIntegrationRequest, setLatestIntegrationRequest] = useState<AdminIntegrationRequestSummary | null>(null);
@@ -381,6 +622,8 @@ export function AdminApplicationCasePage() {
   const appId = applicationId.trim();
   const validAppId = UUID_PATTERN.test(appId);
   const notesStorageKey = `admin_case_notes_${appId}`;
+  const returnToParam = searchParams.get("returnTo");
+  const backTo = returnToParam?.startsWith("/admin/candidature") ? returnToParam : "/admin/candidature";
 
   useEffect(() => {
     if (!validAppId) return;
@@ -405,10 +648,11 @@ export function AdminApplicationCasePage() {
       const summaryData = await getRevampApplicationSummary(appId, token);
       setSummary(summaryData);
 
-      const [sectionsResult, historyResult, auditResult] = await Promise.allSettled([
+      const [sectionsResult, historyResult, auditResult, fieldChangesResult] = await Promise.allSettled([
         getRevampApplicationSections(appId, token),
         getAdminReviewHistory(appId, token),
-        getAdminAuditEvents(token, { entityType: "REVAMP_APPLICATION", entityId: appId })
+        getAdminAuditEvents(token, { entityType: "REVAMP_APPLICATION", entityId: appId }),
+        listFieldChangeRequests(appId, token)
       ]);
 
       if (sectionsResult.status === "fulfilled") {
@@ -441,6 +685,17 @@ export function AdminApplicationCasePage() {
       } else {
         setAuditEvents([]);
       }
+
+      if (fieldChangesResult.status === "fulfilled") {
+        const audits = await Promise.all(
+          fieldChangesResult.value.map((fcr: FieldChangeRequest) =>
+            getAdminAuditEvents(token, { entityType: "FIELD_CHANGE_REQUEST", entityId: fcr.id }).catch(() => [] as AdminAuditEventRow[])
+          )
+        );
+        setFieldChangeAuditEvents(audits.flat());
+      } else {
+        setFieldChangeAuditEvents([]);
+      }
     } catch (error) {
       const message = error instanceof HttpError ? error.message : "Caricamento pratica non riuscito.";
       setToast({ message, type: "error" });
@@ -472,12 +727,29 @@ export function AdminApplicationCasePage() {
 
   const latestCase = useMemo(() => reviewHistory[0] ?? null, [reviewHistory]);
   const timelineEvents = useMemo<ReviewTimelineEvent[]>(() => {
+    const decidedReviewCaseIds = new Set(
+      auditEvents
+        .filter((event) => event.eventKey === "revamp.review.decided")
+        .map((event) => parseAuditRecord(event.metadataJson).reviewCaseId)
+        .filter(Boolean)
+    );
     const events = auditEvents
+      .filter((event) => {
+        if (event.eventKey !== "revamp.review.opened") return true;
+        const reviewCaseId = parseAuditRecord(event.metadataJson).reviewCaseId;
+        return !reviewCaseId || !decidedReviewCaseIds.has(reviewCaseId);
+      })
       .map(mapAuditToTimelineEvent)
       .filter((event): event is ReviewTimelineEvent => Boolean(event))
       .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+    const fcrAuditEvents = fieldChangeAuditEvents
+      .map(mapFcrAuditToTimelineEvent)
+      .filter((event): event is ReviewTimelineEvent => Boolean(event))
+      .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+    const auditedFcrIds = new Set(fieldChangeAuditEvents.map((event) => event.entityId));
     const fieldChangeEvents = reviewHistory
       .filter((item) => item.reviewType === "FIELD_CHANGE")
+      .filter((item) => !item.fieldChangeRequestId || !auditedFcrIds.has(item.fieldChangeRequestId))
       .map((item) => ({
         id: `fcr-${item.id}`,
         title: item.decision
@@ -494,9 +766,21 @@ export function AdminApplicationCasePage() {
         detail: fieldChangeGroupLabel(item.fieldChangeSectionKey),
         occurredAt: item.updatedAt
       }) satisfies ReviewTimelineEvent);
+    const renewalEvents = reviewHistory
+      .filter((item) => item.reviewType === "DOCUMENT_RENEWAL")
+      .flatMap((item) => (item.activeDocumentRenewalRequests ?? [])
+        .filter((request) => request.status === "APPROVED" || request.status === "REJECTED")
+        .map((request) => ({
+          id: `renewal-${request.id}-${request.status}`,
+          title: request.status === "APPROVED" ? "Documento rinnovato approvato" : "Documento rinnovato respinto",
+          badge: request.status === "APPROVED" ? "Approvato" : "Respinto",
+          tone: request.status === "APPROVED" ? "ok" : "danger",
+          detail: request.documentLabel,
+          occurredAt: request.updatedAt ?? item.updatedAt
+        }) satisfies ReviewTimelineEvent));
 
     if (events.length > 0) {
-      return [...events, ...fieldChangeEvents].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+      return [...events, ...fcrAuditEvents, ...fieldChangeEvents, ...renewalEvents].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
     }
 
     const fallback: ReviewTimelineEvent[] = [];
@@ -523,8 +807,8 @@ export function AdminApplicationCasePage() {
           occurredAt: item.updatedAt
         });
       });
-    return [...fallback, ...fieldChangeEvents].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
-  }, [auditEvents, reviewHistory, summary?.protocolCode, summary?.submittedAt]);
+    return [...fallback, ...fcrAuditEvents, ...fieldChangeEvents, ...renewalEvents].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+  }, [auditEvents, fieldChangeAuditEvents, reviewHistory, summary?.protocolCode, summary?.submittedAt]);
   const historyRows = useMemo(() => {
     const rows: ReviewTimelineEvent[][] = [];
     for (let index = 0; index < timelineEvents.length; index += HISTORY_SNAKE_ROW_SIZE) {
@@ -540,6 +824,14 @@ export function AdminApplicationCasePage() {
   const s4Payload = useMemo(() => getSectionPayload(sections, "S4"), [sections]);
   const isFieldChangeReview = latestCase?.reviewType === "FIELD_CHANGE";
   const isDocumentRenewalReview = latestCase?.reviewType === "DOCUMENT_RENEWAL";
+  const stickyStatusLabel = isDocumentRenewalReview
+    ? renewalHeaderStatusLabel(latestCase)
+    : isFieldChangeReview
+      ? "Modifica dati in revisione"
+      : statusLabelOf(summary?.status);
+  const stickyStatusTone = isDocumentRenewalReview
+    ? renewalHeaderStatusTone(latestCase)
+    : statusToneOf(summary?.status);
   const canFinalize = canFinalizeDecision(adminRole);
   const canRequestIntegration = !isFieldChangeReview && !isDocumentRenewalReview && canRequestIntegrationDecision(adminRole);
   const reviewReadOnly = auth?.role === "ADMIN" && adminRole === "VIEWER";
@@ -556,6 +848,10 @@ export function AdminApplicationCasePage() {
   const isAlboB = summary?.registryType === "ALBO_B";
   const fieldChangeLabel = fieldChangeGroupLabel(latestCase?.fieldChangeSectionKey);
   const fieldChangeRows = useMemo(() => fieldChangeComparisonRows(latestCase), [latestCase]);
+  const documentRenewalRows = useMemo(
+    () => renewalReviewRows(latestCase, s1Payload, s4Payload),
+    [latestCase, s1Payload, s4Payload]
+  );
 
   const candidateHeaderTitle = useMemo(() => {
     if (!summary) return "Candidatura";
@@ -757,7 +1053,7 @@ export function AdminApplicationCasePage() {
 
       {/* ── Sticky top bar ── */}
       <div className="review-sticky-bar">
-        <Link to="/admin/candidature" className="review-back-btn">
+        <Link to={backTo} className="review-back-btn">
           <ArrowLeft size={15} /> Torna alla lista
         </Link>
         <div className="review-sticky-identity">
@@ -765,8 +1061,8 @@ export function AdminApplicationCasePage() {
           <span className={`review-albo-badge ${isAlboB ? "albo-b" : "albo-a"}`}>
             {isAlboB ? "Albo Aziende" : "Albo Professionisti"}
           </span>
-          <span className={`review-sticky-status tone-${statusToneOf(summary?.status)}`}>
-            {isDocumentRenewalReview ? "Rinnovo documenti in revisione" : isFieldChangeReview ? "Modifica dati in revisione" : statusLabelOf(summary?.status)}
+          <span className={`review-sticky-status tone-${stickyStatusTone}`}>
+            {stickyStatusLabel}
           </span>
           {isFieldChangeReview ? <span className="queue-pill urgency response-received">Modifica dati</span> : null}
           {isDocumentRenewalReview ? <span className="queue-pill urgency response-received">Rinnovo documenti</span> : null}
@@ -791,7 +1087,7 @@ export function AdminApplicationCasePage() {
             <div className="review-hero-meta-grid">
               <div className="review-hero-meta-item">
                 <span className="review-meta-label">Codice pratica</span>
-                <span className="review-meta-value">{applicationDisplayCode(summary)}</span>
+                <span className="review-meta-value" title={applicationDisplayCode(summary)}>{applicationDisplayCode(summary)}</span>
               </div>
               <div className="review-hero-meta-item">
                 <span className="review-meta-label">Data invio</span>
@@ -803,7 +1099,7 @@ export function AdminApplicationCasePage() {
               </div>
               <div className="review-hero-meta-item">
                 <span className="review-meta-label">Assegnata a</span>
-                <span className="review-meta-value">{latestCase?.assignedToDisplayName ?? "Non assegnata"}</span>
+                <span className="review-meta-value" title={latestCase?.assignedToDisplayName ?? "Non assegnata"}>{latestCase?.assignedToDisplayName ?? "Non assegnata"}</span>
               </div>
               <div className="review-hero-meta-item">
                 <span className="review-meta-label">Scadenza SLA</span>
@@ -812,7 +1108,7 @@ export function AdminApplicationCasePage() {
               {candidateMetaRows.map((row) => (
                 <div key={row.label} className="review-hero-meta-item">
                   <span className="review-meta-label">{row.label}</span>
-                  <span className="review-meta-value">{row.value}</span>
+                  <span className="review-meta-value" title={row.value}>{row.value}</span>
                 </div>
               ))}
             </div>
@@ -820,6 +1116,54 @@ export function AdminApplicationCasePage() {
         </div>
 
         {/* ── Verification outcome banner ── */}
+        {isDocumentRenewalReview ? (
+          <div className="panel review-renewal-summary-panel">
+            <div className="review-side-panel-head">
+              <h4><ClipboardList size={15} /> Documenti rinnovati dal fornitore</h4>
+              <span className="review-side-count">{documentRenewalRows.length} aggiornamenti</span>
+            </div>
+            <p className="subtle">
+              Riepilogo dei documenti inviati per questa revisione. Se il fornitore invia altri documenti prima della decisione, vengono aggiunti qui.
+            </p>
+            {documentRenewalRows.length > 0 ? (
+              <div className="review-renewal-summary-list">
+                {documentRenewalRows.map((row) => (
+                  <article key={row.id} className="review-renewal-summary-item">
+                    <div className="review-renewal-summary-title">
+                      <FileText size={16} />
+                      <div>
+                        <strong>{row.label}</strong>
+                        <span>{row.sectionLabel}</span>
+                      </div>
+                    </div>
+                    <div className="review-renewal-summary-details">
+                      <div>
+                        <span className="review-meta-label">Prima</span>
+                        <strong title={row.oldValue}>{row.oldValue}</strong>
+                      </div>
+                      <div>
+                        <span className="review-meta-label">Aggiornato</span>
+                        <strong title={row.newValue}>{row.newValue}</strong>
+                      </div>
+                      <div>
+                        <span className="review-meta-label">Scadenza</span>
+                        <strong>{row.expiry}</strong>
+                      </div>
+                      <div>
+                        <span className="review-meta-label">Inviato</span>
+                        <strong>{row.submittedAt ? new Date(row.submittedAt).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "n/d"}</strong>
+                      </div>
+                    </div>
+                    <span className={`review-history-status tone-${row.tone}`}>{row.statusLabel}</span>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="review-doc-empty">Nessun dettaglio di rinnovo disponibile per questa revisione.</div>
+            )}
+          </div>
+        ) : null}
+
         {latestCase?.verifiedAt ? (
           <>
             <div className={`review-outcome-banner outcome-${(latestCase.verificationOutcome ?? "COMPLIANT").toLowerCase()}`}>

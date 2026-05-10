@@ -348,7 +348,7 @@ export function AdminUsersRolesPage() {
         value: stats.active,
         icon: <UserCheck className="h-4 w-4" />,
         trend: "abilitati",
-        tone: activeLevel,
+        tone: "ok",
         level: activeLevel,
         levelLabel: stats.total === 0 ? "Vuoto" : stats.active === stats.total ? "Completo" : "Verificare"
       },
@@ -358,7 +358,7 @@ export function AdminUsersRolesPage() {
         value: stats.withRoles,
         icon: <KeyRound className="h-4 w-4" />,
         trend: "governance",
-        tone: roleLevel,
+        tone: "info",
         level: roleLevel,
         levelLabel: stats.withRoles === 0 ? "Da assegnare" : "Presente"
       },
@@ -368,7 +368,7 @@ export function AdminUsersRolesPage() {
         value: item.count,
         icon: roleKpiIcon(item.role),
         trend: "ruolo",
-        tone: item.count > 0 ? "ok" : "info",
+        tone: "ok",
         level: item.count > 0 ? "ok" : "info",
         levelLabel: item.count > 0 ? "Assegnato" : "Vuoto"
       }))
@@ -836,7 +836,7 @@ export function AdminUsersRolesPage() {
                 }}
               >
                 <div className="settings-user-cell">
-                  <strong>{row.email}</strong>
+                  <strong title={row.email}>{row.email}</strong>
                 </div>
                 {(() => {
                   const isOwnRow = auth?.userId === row.userId;

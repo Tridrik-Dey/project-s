@@ -18,6 +18,7 @@ public record FieldChangeRequestDto(
         String beforeValueJson,
         String afterValueJson,
         UUID reviewCaseId,
+        String decisionReason,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

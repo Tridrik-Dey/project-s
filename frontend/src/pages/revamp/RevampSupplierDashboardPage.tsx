@@ -21,6 +21,7 @@ import { completedIntegrationCodes } from "../../utils/revampIntegrationCompleti
 import { saveRevampFcrEditSession } from "../../utils/revampFcrEditSession";
 import {
   listFieldChangeRequests,
+  supplierCancelChangeRequest,
   type FieldChangeRequest,
 } from "../../api/fieldChangeRequestApi";
 import {
@@ -148,6 +149,16 @@ STATUS_CFG.INTEGRATION_REQUIRED = {
 STATUS_CFG.WAITING_SUPPLIER_RESPONSE = STATUS_CFG.INTEGRATION_REQUIRED;
 
 type Tab = "profilo" | "documenti" | "valutazioni" | "comunicazioni";
+type SupplierCommunicationRow = {
+  id: string;
+  sortAt: string;
+  date: string;
+  text: string;
+  action: null | (() => void);
+  actionLabel: string | null;
+  meta: string | null;
+  trackForBadge: boolean;
+};
 type RequestedItem = {
   code: string;
   label: string;
@@ -159,6 +170,50 @@ type RequestedItem = {
 };
 
 /* ─── module-level helpers ──────────────────────────── */
+function safeSupplierIdentity(userId: string | null | undefined, email: string | null | undefined): string {
+  return (userId || email || "unknown").replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function supplierCommunicationSeenStorageKey(
+  applicationId: string | null | undefined,
+  userId: string | null | undefined,
+  email: string | null | undefined
+): string {
+  return `supplier.communications.${safeSupplierIdentity(userId, email)}.${applicationId ?? "unknown"}.seen.v1`;
+}
+
+function readSeenSupplierCommunicationIds(
+  applicationId: string | null | undefined,
+  userId: string | null | undefined,
+  email: string | null | undefined
+): Set<string> {
+  try {
+    const raw = localStorage.getItem(supplierCommunicationSeenStorageKey(applicationId, userId, email));
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((item): item is string => typeof item === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function markSupplierCommunicationsSeen(
+  applicationId: string | null | undefined,
+  userId: string | null | undefined,
+  email: string | null | undefined,
+  ids: readonly string[]
+) {
+  if (ids.length === 0) return;
+  try {
+    const seen = readSeenSupplierCommunicationIds(applicationId, userId, email);
+    ids.forEach((id) => seen.add(id));
+    localStorage.setItem(supplierCommunicationSeenStorageKey(applicationId, userId, email), JSON.stringify([...seen]));
+  } catch {
+    // Local storage can be unavailable; the history still renders normally.
+  }
+}
+
 function parseSection(sections: Record<string, RevampSectionSnapshot>, key: string): Record<string, unknown> {
   return sections[key] ? (JSON.parse(sections[key].payloadJson) as Record<string, unknown>) : {};
 }
@@ -367,9 +422,11 @@ export function RevampSupplierDashboardPage() {
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [fieldChangeRequests, setFieldChangeRequests] = useState<FieldChangeRequest[]>([]);
+  const [cancellingFcrId, setCancellingFcrId] = useState<string | null>(null);
   const [documentRenewalRequests, setDocumentRenewalRequests] = useState<DocumentRenewalRequest[]>([]);
   const [renewalDrawerBatch, setRenewalDrawerBatch] = useState<DocumentRenewalRequest[] | null>(null);
   const [showFcrModal, setShowFcrModal] = useState(false);
+  const [unseenCommunicationCount, setUnseenCommunicationCount] = useState(0);
 
   const isA    = registryParam === "albo-a";
   const isB    = registryParam === "albo-b";
@@ -421,7 +478,6 @@ export function RevampSupplierDashboardPage() {
     return () => { cancelled = true; };
   }, [auth?.token, isA]);
 
-  if (!isA && !isB) return <Navigate to="/apply" replace />;
 
   /* ── parse all section payloads ── */
   const s1  = parseSection(sections, "S1");
@@ -537,15 +593,18 @@ export function RevampSupplierDashboardPage() {
       }, {})
   );
 
-  const communicationRows = [
+  const realCommunicationRows: SupplierCommunicationRow[] = [
     ...communications.map(item => ({
+      id: `communication:${item.eventKey}:${item.occurredAt}:${item.message}`,
+      sortAt: item.occurredAt,
       date: new Date(item.occurredAt).toLocaleDateString("it-IT"),
       text: item.eventKey === "revamp.application.submitted"
         ? `${item.message} - Codice protocollo: ${proto}`
         : item.message,
       action: null as null | (() => void),
       actionLabel: null as string | null,
-      meta: null as string | null
+      meta: null as string | null,
+      trackForBadge: true
     })),
     ...activeRenewalBatches
       .map(batch => {
@@ -553,41 +612,67 @@ export function RevampSupplierDashboardPage() {
         const labels = batch.map(item => item.documentLabel).join(", ");
         const hasExpired = batch.some(item => item.expiredWithoutResponse);
         return {
+        id: `renewal-batch:${first.batchId || batch.map(item => item.id).sort().join(",")}:${batch.map(item => `${item.id}:${item.status}:${item.updatedAt ?? item.createdAt}`).sort().join("|")}`,
+        sortAt: batch
+          .map(item => item.updatedAt ?? item.createdAt)
+          .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? first.createdAt,
         date: new Date(first.createdAt).toLocaleDateString("it-IT"),
         text: `${hasExpired ? "Documenti scaduti" : "Rinnovo documenti richiesto"} - ${labels}`,
         action: () => setRenewalDrawerBatch(batch),
         actionLabel: "Aggiorna",
-        meta: first.expiryDate ? `Scadenza: ${new Date(first.expiryDate).toLocaleDateString("it-IT")}` : null
+        meta: first.expiryDate ? `Scadenza: ${new Date(first.expiryDate).toLocaleDateString("it-IT")}` : null,
+        trackForBadge: true
       };
       }),
     ...documentRenewalRequests
       .filter(item => item.status === "APPROVED" || item.status === "REJECTED")
       .map(item => ({
+        id: `renewal-outcome:${item.id}:${item.status}:${item.updatedAt ?? item.createdAt}`,
+        sortAt: item.updatedAt ?? item.createdAt,
         date: new Date(item.updatedAt ?? item.createdAt).toLocaleDateString("it-IT"),
         text: `Rinnovo documento ${item.status === "APPROVED" ? "approvato" : "respinto"} - ${item.documentLabel}`,
         action: null as null | (() => void),
         actionLabel: null as string | null,
-        meta: null as string | null
-      })),
-    ...fieldChangeRequests
-      .filter(fcr => fcr.status === "APPROVED" || fcr.status === "REJECTED")
-      .map(fcr => {
-        const groupLabel = getFcrGroup(fcr.sectionKey)?.label ?? fcr.sectionKey;
-        const outcome = fcr.status === "APPROVED" ? "approvata" : "respinta";
-        return {
-          date: new Date(fcr.updatedAt ?? fcr.submittedAt ?? fcr.createdAt).toLocaleDateString("it-IT"),
-          text: `Modifica dati ${outcome} - ${groupLabel}${fcr.adminNote ? ` - Nota admin: ${fcr.adminNote}` : ""}`,
-          action: null as null | (() => void),
-          actionLabel: null as string | null,
-          meta: null as string | null
-        };
-      }),
-    { date: new Date().toLocaleDateString("it-IT"), text: `Accesso all'area riservata - ${alboLabel}`, action: null, actionLabel: null, meta: null }
+        meta: null as string | null,
+        trackForBadge: true
+      }))
+  ].sort((a, b) => Date.parse(b.sortAt) - Date.parse(a.sortAt));
+  const communicationRows: SupplierCommunicationRow[] = [
+    ...realCommunicationRows,
+    {
+      id: `access:${new Date().toLocaleDateString("it-IT")}`,
+      sortAt: "",
+      date: new Date().toLocaleDateString("it-IT"),
+      text: `Accesso all'area riservata - ${alboLabel}`,
+      action: null,
+      actionLabel: null,
+      meta: null,
+      trackForBadge: false
+    }
   ];
   const openIntegrationRowIndex = hasOpenIntegration
     ? communicationRows.findIndex(row => row.text.toLowerCase().includes("richiesta integrazione"))
     : -1;
-  const communicationCount = communicationRows.length;
+  const communicationCount = communicationRows.length + fieldChangeRequests.length;
+  const badgeCommunicationIds = [
+    ...communicationRows.filter(row => row.trackForBadge).map(row => row.id)
+  ];
+  const badgeCommunicationSignature = badgeCommunicationIds.join("|");
+
+  useEffect(() => {
+    if (!application) {
+      setUnseenCommunicationCount(0);
+      return;
+    }
+    const seen = readSeenSupplierCommunicationIds(application.id, auth?.userId, auth?.email);
+    setUnseenCommunicationCount(badgeCommunicationIds.filter(id => !seen.has(id)).length);
+  }, [application?.id, auth?.userId, auth?.email, badgeCommunicationSignature]);
+
+  useEffect(() => {
+    if (!application || activeTab !== "comunicazioni" || badgeCommunicationIds.length === 0) return;
+    markSupplierCommunicationsSeen(application.id, auth?.userId, auth?.email, badgeCommunicationIds);
+    setUnseenCommunicationCount(0);
+  }, [activeTab, application?.id, auth?.userId, auth?.email, badgeCommunicationSignature]);
 
   const tabItems: { id: Tab; label: string }[] = [
     { id: "profilo",       label: "Il mio profilo" },
@@ -597,6 +682,8 @@ export function RevampSupplierDashboardPage() {
   ];
 
   /* ── print handler ── */
+  if (!isA && !isB) return <Navigate to="/apply" replace />;
+
   function handlePrint() { window.print(); }
 
   function handleModifyClick() {
@@ -627,7 +714,7 @@ export function RevampSupplierDashboardPage() {
       applicationId: application.id,
       registryType: registry,
       targetStep: targetStepForRenewal(item),
-      returnPath: `/supplier/${registryParam}/dashboard/comunicazioni`,
+      returnPath: `/apply/${registryParam}/my-profile`,
       batchId: item.batchId,
       documentType: item.documentType,
       documentLabel: item.documentLabel,
@@ -656,6 +743,19 @@ export function RevampSupplierDashboardPage() {
   }
 
   /* ── download handler ── */
+  async function cancelFieldChangeRequest(fcrId: string) {
+    if (!auth?.token || !application) return;
+    setCancellingFcrId(fcrId);
+    try {
+      const updated = await supplierCancelChangeRequest(fcrId, auth.token);
+      setFieldChangeRequests(prev => prev.map(item => item.id === fcrId ? updated : item));
+      const refreshedCommunications = await getRevampApplicationCommunications(application.id, auth.token);
+      setCommunications(refreshedCommunications);
+    } finally {
+      setCancellingFcrId(null);
+    }
+  }
+
   async function handleDownload(fileName: string, storageKey: string) {
     if (!auth?.token || !application?.id) return;
     setDownloadingKey(storageKey);
@@ -732,8 +832,18 @@ export function RevampSupplierDashboardPage() {
     }) ?? null;
   }
 
+  function renewalCertificationDeclined(item: DocumentRenewalRequest): boolean {
+    if (item.sectionKey !== "S4" || item.documentType !== "CERTIFICATION" || !item.certificationKey) return false;
+    const certificazioni = s4.certificazioni;
+    if (!certificazioni || typeof certificazioni !== "object" || Array.isArray(certificazioni)) return false;
+    const record = (certificazioni as Record<string, unknown>)[item.certificationKey];
+    if (!record || typeof record !== "object" || Array.isArray(record)) return false;
+    return (record as Record<string, unknown>).presente === "no";
+  }
+
   function isRenewalDocumentUpdated(item: DocumentRenewalRequest): boolean {
     if (item.status === "SUBMITTED" || item.status === "UNDER_REVIEW" || item.status === "APPROVED") return true;
+    if (renewalCertificationDeclined(item)) return true;
     const current = currentRenewalAttachment(item);
     if (!current) return false;
     const oldAttachment = parseAttachmentJson(item.oldAttachmentJson);
@@ -1010,7 +1120,9 @@ export function RevampSupplierDashboardPage() {
               style={{ padding: "0 20px", height: "100%", background: "none", border: "none", borderBottom: activeTab === t.id ? "2.5px solid #f5c800" : "2.5px solid transparent", fontWeight: activeTab === t.id ? 700 : 500, fontSize: "0.87rem", color: activeTab === t.id ? "#fff" : "rgba(255,255,255,0.65)", cursor: "pointer", position: "relative" }}>
               <span className="supplier-profile-tab-label">
                 {t.label}
-                {t.id === "comunicazioni" && hasOpenIntegration ? <span className="supplier-profile-nav-badge">1</span> : null}
+                {t.id === "comunicazioni" && unseenCommunicationCount > 0 ? (
+                  <span className="supplier-profile-nav-badge">{unseenCommunicationCount}</span>
+                ) : null}
               </span>
             </button>
           ))}
@@ -1698,6 +1810,7 @@ export function RevampSupplierDashboardPage() {
                 const statusLabels: Record<string, string> = {
                   PENDING_ADMIN_REVIEW: "In attesa di risposta",
                   UNLOCKED: "Sezione sbloccata — aggiorna i tuoi dati",
+                  CANCELLED_BY_SUPPLIER: "Richiesta annullata dal fornitore",
                   REJECTED_BY_ADMIN: "Richiesta rifiutata",
                   SUBMITTED: "Inviata — in revisione",
                   UNDER_REVIEW: "In revisione",
@@ -1717,7 +1830,8 @@ export function RevampSupplierDashboardPage() {
                       </span>
                       <span style={{ display: "block", fontSize: "0.78rem", marginTop: 2, opacity: 0.75 }}>
                         {statusLabels[fcr.status] ?? fcr.status}
-                        {fcr.adminNote ? ` — Nota admin: ${fcr.adminNote}` : ""}
+                        {fcr.decisionReason || fcr.adminNote ? ` - Motivo: ${fcr.decisionReason || fcr.adminNote}` : ""}
+                        {fcr.status === "REJECTED" ? " - Valore precedente mantenuto" : ""}
                       </span>
                       {isUnlocked && application && (
                         <span className="supplier-communication-action-meta">
@@ -1739,6 +1853,15 @@ export function RevampSupplierDashboardPage() {
                             }}
                           >
                             Aggiorna: {getFcrGroup(fcr.sectionKey)?.label ?? fcr.sectionKey}
+                          </button>
+                          <button
+                            type="button"
+                            className="supplier-communication-row-btn is-secondary"
+                            disabled={cancellingFcrId === fcr.id}
+                            onClick={() => void cancelFieldChangeRequest(fcr.id)}
+                          >
+                            <X size={13} />
+                            {cancellingFcrId === fcr.id ? "Annullamento..." : "Annulla richiesta"}
                           </button>
                         </span>
                       )}

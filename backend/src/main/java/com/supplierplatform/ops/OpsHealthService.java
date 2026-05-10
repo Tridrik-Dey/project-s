@@ -1,5 +1,6 @@
 package com.supplierplatform.ops;
 
+import com.supplierplatform.config.CentralizedJavaMailSender;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -8,6 +9,7 @@ import org.springframework.stereotype.Service;
 public class OpsHealthService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final CentralizedJavaMailSender centralizedJavaMailSender;
 
     @Value("${app.reminders.document-expiry.mail.enabled:false}")
     private boolean reminderMailEnabled;
@@ -15,14 +17,9 @@ public class OpsHealthService {
     @Value("${app.reviews.status-mail.enabled:true}")
     private boolean reviewStatusMailEnabled;
 
-    @Value("${spring.mail.username:}")
-    private String mailUsername;
-
-    @Value("${spring.mail.password:}")
-    private String mailPassword;
-
-    public OpsHealthService(JdbcTemplate jdbcTemplate) {
+    public OpsHealthService(JdbcTemplate jdbcTemplate, CentralizedJavaMailSender centralizedJavaMailSender) {
         this.jdbcTemplate = jdbcTemplate;
+        this.centralizedJavaMailSender = centralizedJavaMailSender;
     }
 
     public HealthSnapshot getHealthSnapshot() {
@@ -46,11 +43,7 @@ public class OpsHealthService {
         if (!reminderMailEnabled && !reviewStatusMailEnabled) {
             return true;
         }
-        return isPresent(mailUsername) && isPresent(mailPassword);
-    }
-
-    private boolean isPresent(String value) {
-        return value != null && !value.isBlank();
+        return centralizedJavaMailSender.hasConfiguredCredentials();
     }
 
     public record HealthSnapshot(

@@ -6,14 +6,15 @@ interface SectionCardProps {
   title: string;
   accent?: "blue" | "green" | "teal" | "orange" | "purple";
   layout?: "default" | "wide";
+  density?: "default" | "compact";
   children: ReactNode;
 }
 
-export function SectionCard({ icon, title, accent = "blue", layout = "default", children }: SectionCardProps) {
+export function SectionCard({ icon, title, accent = "blue", layout = "default", density = "default", children }: SectionCardProps) {
   const [open, setOpen] = useState(true);
 
   return (
-    <div className={`panel profile-section-card accent-${accent}${layout === "wide" ? " is-wide" : ""}${open ? " is-open" : " is-collapsed"}`}>
+    <div className={`panel profile-section-card accent-${accent}${layout === "wide" ? " is-wide" : ""}${density === "compact" ? " is-compact" : ""}${open ? " is-open" : " is-collapsed"}`}>
       <button
         type="button"
         className="profile-section-header"

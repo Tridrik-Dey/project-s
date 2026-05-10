@@ -56,15 +56,22 @@ public class RevampNotificationEventService {
                 .orElseThrow(() -> new EntityNotFoundException("RevampNotificationEvent", eventId));
         event.setDeliveryStatus(NotificationDeliveryStatus.SENT);
         event.setProviderMessageId(providerMessageId);
+        event.setFailureReason(null);
         event.setSentAt(LocalDateTime.now());
         return notificationEventRepository.save(event);
     }
 
     @Transactional
     public RevampNotificationEvent markFailed(UUID eventId) {
+        return markFailed(eventId, null);
+    }
+
+    @Transactional
+    public RevampNotificationEvent markFailed(UUID eventId, String failureReason) {
         RevampNotificationEvent event = notificationEventRepository.findById(eventId)
                 .orElseThrow(() -> new EntityNotFoundException("RevampNotificationEvent", eventId));
         event.setDeliveryStatus(NotificationDeliveryStatus.FAILED);
+        event.setFailureReason(normalizeFailureReason(failureReason));
         event.setRetryCount((event.getRetryCount() == null ? 0 : event.getRetryCount()) + 1);
         return notificationEventRepository.save(event);
     }
@@ -110,8 +117,28 @@ public class RevampNotificationEventService {
                 event.getDeliveryStatus() != null ? event.getDeliveryStatus().name() : null,
                 event.getRetryCount(),
                 event.getCreatedAt(),
-                event.getSentAt()
+                event.getSentAt(),
+                event.getFailureReason()
         );
+    }
+
+    public String failureReason(Throwable throwable) {
+        if (throwable == null) return null;
+        Throwable cursor = throwable;
+        String message = null;
+        while (cursor != null) {
+            if (cursor.getMessage() != null && !cursor.getMessage().isBlank()) {
+                message = cursor.getClass().getSimpleName() + ": " + cursor.getMessage();
+            }
+            cursor = cursor.getCause();
+        }
+        return normalizeFailureReason(message != null ? message : throwable.getClass().getSimpleName());
+    }
+
+    private String normalizeFailureReason(String failureReason) {
+        if (failureReason == null || failureReason.isBlank()) return null;
+        String normalized = failureReason.replaceAll("\\s+", " ").trim();
+        return normalized.length() > 1000 ? normalized.substring(0, 1000) : normalized;
     }
 
     private JsonNode parseJsonRequired(String raw, String fieldName) {

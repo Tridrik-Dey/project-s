@@ -52,6 +52,9 @@ public class RevampNotificationEvent {
     @Column(name = "provider_message_id")
     private String providerMessageId;
 
+    @Column(name = "failure_reason", length = 1000)
+    private String failureReason;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payload_json", nullable = false, columnDefinition = "jsonb")
     private JsonNode payloadJson;
@@ -70,6 +73,5 @@ public class RevampNotificationEvent {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 }
-
 
 

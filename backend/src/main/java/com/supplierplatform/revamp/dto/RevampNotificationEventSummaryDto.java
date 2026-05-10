@@ -14,6 +14,7 @@ public record RevampNotificationEventSummaryDto(
         String deliveryStatus,
         Integer retryCount,
         LocalDateTime createdAt,
-        LocalDateTime sentAt
+        LocalDateTime sentAt,
+        String failureReason
 ) {
 }

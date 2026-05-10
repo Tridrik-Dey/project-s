@@ -25,6 +25,7 @@ export interface AdminNotificationEvent {
   retryCount: number;
   createdAt: string;
   sentAt: string | null;
+  failureReason?: string | null;
 }
 
 export interface ComposeEmailPayload {

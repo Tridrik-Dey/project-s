@@ -9,6 +9,9 @@ import { DIAL_CODE_OPTIONS } from "../../utils/dialCodes";
 import { clearRevampIntegrationEditSession, integrationEditHasAnyCode, isRevampIntegrationEditFor } from "../../utils/revampIntegrationEditSession";
 import { completeRevampIntegrationEdit } from "../../utils/revampIntegrationCompletion";
 import { clearRevampDocumentRenewalEditSession, isRevampDocumentRenewalEditFor, requestRevampDocumentRenewalDrawerReopen } from "../../utils/revampDocumentRenewalEditSession";
+import { loadRevampFcrEditSession } from "../../utils/revampFcrEditSession";
+import { useFcrEditMode } from "../../hooks/useFcrEditMode";
+import { FcrSubmitBar } from "../../components/supplier/FcrSubmitBar";
 
 const GREEN = "#1a5c3a";
 const MUTED = "#6b7280";
@@ -349,9 +352,12 @@ function StepBar({ active }: { active: number }) {
 export function RevampAlboBStep1DatiAziendaliPage() {
   const navigate = useNavigate();
   const { auth } = useAuth();
+  const fcr = useFcrEditMode();
   const integrationEdit = isRevampIntegrationEditFor("ALBO_B", 1);
   const renewalEdit = isRevampDocumentRenewalEditFor("ALBO_B", 1);
   const integrationIdentityOnly = integrationEditHasAnyCode(integrationEdit, ["ID_DOCUMENT"]) || Boolean(renewalEdit?.documentType === "ID_DOCUMENT");
+  const fcrLocked = (groupKey: string) => fcr.active && fcr.isLocked(groupKey);
+  const fcrGroupClass = (groupKey: string) => fcr.active ? (fcrLocked(groupKey) ? "fcr-locked" : "fcr-active-group") : undefined;
 
   const [form, setForm] = useState({
     ragioneSociale: "", formaGiuridica: "", piva: "", codiceFiscale: "",
@@ -371,6 +377,10 @@ export function RevampAlboBStep1DatiAziendaliPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   async function getOrCreateAlboBApplicationId(): Promise<string> {
+    if (fcr.active && fcr.fcrId) {
+      const session = loadRevampFcrEditSession();
+      if (session?.applicationId) return session.applicationId;
+    }
     if (integrationEdit) return integrationEdit.applicationId;
     if (renewalEdit) return renewalEdit.applicationId;
     const existing = loadRevampApplicationIdForRegistry("ALBO_B");
@@ -495,7 +505,8 @@ export function RevampAlboBStep1DatiAziendaliPage() {
       }
     }
 
-    const existingAppId = renewalEdit?.applicationId ?? integrationEdit?.applicationId ?? loadRevampApplicationIdForRegistry("ALBO_B");
+    const fcrApplicationId = loadRevampFcrEditSession()?.applicationId;
+    const existingAppId = fcrApplicationId ?? renewalEdit?.applicationId ?? integrationEdit?.applicationId ?? loadRevampApplicationIdForRegistry("ALBO_B");
     if (existingAppId) {
       getRevampApplicationSections(existingAppId, auth.token).then(applyS1).catch(() => {});
       return;
@@ -618,58 +629,74 @@ export function RevampAlboBStep1DatiAziendaliPage() {
     }
   }
 
+  function buildDraftPayload() {
+    return {
+      ...form,
+      telefono: composePhoneValue(form.telefonoCode, form.telefono),
+      refTelefono: composePhoneValue(form.refTelefonoCode, form.refTelefono),
+    };
+  }
+
+  function buildApiPayload() {
+    const payload = buildDraftPayload();
+    const FORMA_TO_BACKEND: Record<string, string> = {
+      srl: "SRL", srls: "SRL", spa: "SPA", sas: "SAS", snc: "SNC",
+      coop_sociale: "COOPERATIVA", coop_nonsociale: "COOPERATIVA",
+      consorzio: "ALTRO", fondazione: "FONDAZIONE", associazione: "ASSOCIAZIONE",
+      aps: "ASSOCIAZIONE", odv: "ASSOCIAZIONE", impresa_sociale: "ETS",
+      studio_associato: "ALTRO", ditta_individuale: "ALTRO", altro: "ALTRO",
+    };
+    return {
+      ...payload,
+      companyName:        form.ragioneSociale,
+      vatNumber:          form.piva,
+      reaNumber:          form.rea,
+      cciaaProvince:      form.cciaa,
+      incorporationDate:  form.dataCostituzione,
+      legalForm:          FORMA_TO_BACKEND[form.formaGiuridica] ?? "ALTRO",
+      institutionalEmail: form.email || form.pec,
+      phone:              composePhoneValue(form.telefonoCode, form.telefono),
+      linkedin:           form.linkedin || undefined,
+      legalRepresentative: {
+        name:                 form.lrNomeCognome,
+        taxCode:              form.lrCodiceFiscale,
+        role:                 form.lrRuolo,
+        idDocumentExpiry:     displayToIso(form.lrIdDocumentExpiry),
+        idDocumentAttachment: lrCartaIdentita ?? undefined,
+      },
+      operationalContact: {
+        name:  form.refNome,
+        email: form.refEmail,
+        phone: composePhoneValue(form.refTelefonoCode, form.refTelefono),
+      },
+      legalAddress: {
+        country:  form.paeseLegale,
+        street:   form.indirizzoLegale,
+        city:     form.comuneLegale,
+        cap:      form.capLegale,
+        province: form.provinciaLegale,
+      },
+    };
+  }
+
+  async function saveSectionProgrammatic() {
+    if (!auth?.token) throw new Error("Sessione scaduta. Effettua nuovamente il login.");
+    const appId = await getOrCreateAlboBApplicationId();
+    await saveRevampApplicationSection(appId, "S1", JSON.stringify(buildApiPayload()), true, auth.token);
+    handleSave();
+  }
+
   async function handleNext(ev: FormEvent) {
     ev.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     handleSave();
-    const payload = {
-      ...form,
-      telefono: composePhoneValue(form.telefonoCode, form.telefono),
-      refTelefono: composePhoneValue(form.refTelefonoCode, form.refTelefono),
-    };
+    const payload = buildDraftPayload();
     sessionStorage.setItem("revamp_b1", JSON.stringify(payload));
     if (auth?.token) {
       try {
         const appId = await getOrCreateAlboBApplicationId();
-        const FORMA_TO_BACKEND: Record<string, string> = {
-          srl: "SRL", srls: "SRL", spa: "SPA", sas: "SAS", snc: "SNC",
-          coop_sociale: "COOPERATIVA", coop_nonsociale: "COOPERATIVA",
-          consorzio: "ALTRO", fondazione: "FONDAZIONE", associazione: "ASSOCIAZIONE",
-          aps: "ASSOCIAZIONE", odv: "ASSOCIAZIONE", impresa_sociale: "ETS",
-          studio_associato: "ALTRO", ditta_individuale: "ALTRO", altro: "ALTRO",
-        };
-        const apiPayload = {
-          ...payload,
-          companyName:        form.ragioneSociale,
-          vatNumber:          form.piva,
-          reaNumber:          form.rea,
-          cciaaProvince:      form.cciaa,
-          incorporationDate:  form.dataCostituzione,
-          legalForm:          FORMA_TO_BACKEND[form.formaGiuridica] ?? "ALTRO",
-          institutionalEmail: form.email || form.pec,
-          phone:              composePhoneValue(form.telefonoCode, form.telefono),
-          linkedin:           form.linkedin || undefined,
-          legalRepresentative: {
-            name:                 form.lrNomeCognome,
-            taxCode:              form.lrCodiceFiscale,
-            role:                 form.lrRuolo,
-            idDocumentExpiry:     displayToIso(form.lrIdDocumentExpiry),
-            idDocumentAttachment: lrCartaIdentita ?? undefined,
-          },
-          operationalContact: {
-            name:  form.refNome,
-            email: form.refEmail,
-            phone: composePhoneValue(form.refTelefonoCode, form.refTelefono),
-          },
-          legalAddress: {
-            country:  form.paeseLegale,
-            street:   form.indirizzoLegale,
-            city:     form.comuneLegale,
-            cap:      form.capLegale,
-            province: form.provinciaLegale,
-          },
-        };
+        const apiPayload = buildApiPayload();
         if (!integrationIdentityOnly) {
           const availability = await checkRevampIdentityAvailability(appId, "vatNumber", form.piva, auth.token);
           if (!availability.available) {
@@ -729,7 +756,11 @@ export function RevampAlboBStep1DatiAziendaliPage() {
         </div>
       </div>
 
-      {integrationEdit || renewalEdit ? (
+      {fcr.active ? (
+        <div style={{ background: "#f0fdf4", borderBottom: "1px solid #bbf7d0", padding: "12px 40px", color: GREEN, fontSize: "0.86rem", fontWeight: 700 }}>
+          Richiesta di modifica - Aggiorna solo il gruppo sbloccato, poi salva e invia.
+        </div>
+      ) : integrationEdit || renewalEdit ? (
         <div style={{ background: "#eff6ff", borderBottom: "1px solid #bfdbfe", padding: "12px 40px", color: "#174f82", fontSize: "0.86rem", fontWeight: 700 }}>
           {renewalEdit ? "Rinnovo documento - Aggiorna solo il documento richiesto, poi salva." : "Richiesta integrazione - Aggiorna solo il documento richiesto, poi salva."}
         </div>
@@ -747,13 +778,15 @@ export function RevampAlboBStep1DatiAziendaliPage() {
             </div>
             <div style={{ height: 1, background: "#f3f4f6", margin: "16px 0 4px" }} />
 
-            <fieldset disabled={integrationIdentityOnly} className={integrationIdentityOnly ? "fcr-locked" : undefined}>
             {/* Dati aziendali */}
             <SectionLabel label="Dati aziendali" />
+            <fieldset disabled={integrationIdentityOnly || fcrLocked("dati_aziendali")} className={integrationIdentityOnly ? "fcr-locked" : fcrGroupClass("dati_aziendali")}>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, marginBottom: 16 }}>
               <Field label="Ragione sociale" required value={form.ragioneSociale} onChange={set("ragioneSociale")} error={errors.ragioneSociale} placeholder="Esempio S.r.l." />
               <SelectField label="Forma giuridica" required value={form.formaGiuridica} onChange={set("formaGiuridica")} error={errors.formaGiuridica} options={FORME_GIURIDICHE} />
             </div>
+            </fieldset>
+            <fieldset disabled={integrationIdentityOnly || fcrLocked("identificativi")} className={integrationIdentityOnly ? "fcr-locked" : fcrGroupClass("identificativi")}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16, marginBottom: 16 }}>
               <Field label="Partita IVA" required value={form.piva} onChange={set("piva")} error={errors.piva} placeholder="12345678901" errorTooltip={errors.piva === DUPLICATE_PIVA_ERROR} />
               <Field label="Codice Fiscale" value={form.codiceFiscale} onChange={set("codiceFiscale")} error={errors.codiceFiscale} placeholder="Se diverso dalla P.IVA" hintText="opzionale" />
@@ -763,9 +796,11 @@ export function RevampAlboBStep1DatiAziendaliPage() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 3fr", gap: 16, marginBottom: 16 }}>
               <Field label="Data di costituzione" required value={form.dataCostituzione} onChange={set("dataCostituzione")} error={errors.dataCostituzione} placeholder="MM/AAAA" hintText="mese/anno" />
             </div>
+            </fieldset>
 
             {/* Sede legale */}
             <SectionLabel label="Sede legale" />
+            <fieldset disabled={integrationIdentityOnly || fcrLocked("sede_legale")} className={integrationIdentityOnly ? "fcr-locked" : fcrGroupClass("sede_legale")}>
             <div style={{ display: "grid", gridTemplateColumns: "0.9fr 2fr", gap: 16, marginBottom: 12 }}>
               <Field label="Paese" required value={form.paeseLegale} onChange={set("paeseLegale")} error={errors.paeseLegale} placeholder="Italia" />
               <Field label="Indirizzo" required value={form.indirizzoLegale} onChange={set("indirizzoLegale")} error={errors.indirizzoLegale} placeholder="Via Roma, 1" />
@@ -775,12 +810,17 @@ export function RevampAlboBStep1DatiAziendaliPage() {
               <Field label="Codice postale" required value={form.capLegale} onChange={set("capLegale")} error={errors.capLegale} placeholder="20121" />
               <Field label="Provincia / Stato / Regione" required value={form.provinciaLegale} onChange={set("provinciaLegale")} error={errors.provinciaLegale} placeholder="MI, Lombardia, NY..." />
             </div>
+            </fieldset>
+            <fieldset disabled={integrationIdentityOnly || fcrLocked("sede_operativa")} className={integrationIdentityOnly ? "fcr-locked" : fcrGroupClass("sede_operativa")}>
             <div style={{ marginBottom: 16 }}>
               <Field label="Sede operativa principale" value={form.sedeOperativa} onChange={set("sedeOperativa")} placeholder="Solo se diversa dalla sede legale — indirizzo completo" hintText="opzionale" />
             </div>
 
+            </fieldset>
+
             {/* Contatti */}
             <SectionLabel label="Contatti istituzionali" />
+            <fieldset disabled={integrationIdentityOnly || fcrLocked("contatti_inst")} className={integrationIdentityOnly ? "fcr-locked" : fcrGroupClass("contatti_inst")}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }}>
               <Field label="E-mail istituzionale" required type="email" value={form.email} error={errors.email} disabled />
               <Field label="PEC" required type="email" value={form.pec} onChange={set("pec")} error={errors.pec} placeholder="azienda@pec.it" />
@@ -794,14 +834,14 @@ export function RevampAlboBStep1DatiAziendaliPage() {
 
             {/* Legale rappresentante */}
             <SectionLabel label="Legale rappresentante" />
-            <fieldset disabled={integrationIdentityOnly} className={integrationIdentityOnly ? "fcr-locked" : undefined}>
+            <fieldset disabled={integrationIdentityOnly || fcrLocked("leg_rappr")} className={integrationIdentityOnly ? "fcr-locked" : fcrGroupClass("leg_rappr")}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }}>
               <Field label="Nome e Cognome" required value={form.lrNomeCognome} onChange={set("lrNomeCognome")} error={errors.lrNomeCognome} placeholder="Mario Rossi" />
               <Field label="Codice Fiscale" required value={form.lrCodiceFiscale} onChange={set("lrCodiceFiscale")} error={errors.lrCodiceFiscale} placeholder="RSSMRA80C15F205X" />
               <Field label="Ruolo / Carica" required value={form.lrRuolo} onChange={set("lrRuolo")} error={errors.lrRuolo} placeholder="Es. Amministratore Unico, Presidente CdA" />
             </div>
             </fieldset>
-            <div className={integrationIdentityOnly ? "fcr-active-group" : undefined}>
+            <fieldset disabled={!integrationIdentityOnly && fcrLocked("leg_rappr")} className={integrationIdentityOnly ? "fcr-active-group" : fcrGroupClass("leg_rappr")}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 4 }}>
               <div style={col}>
                 <span style={{ ...lbl, display: "flex", alignItems: "center", gap: 4 }}>
@@ -843,10 +883,10 @@ export function RevampAlboBStep1DatiAziendaliPage() {
                 {uploadError}
               </div>
             ) : <div style={{ marginBottom: 16 }} />}
-            </div>
+            </fieldset>
 
             {/* Referente operativo */}
-            <fieldset disabled={integrationIdentityOnly} className={integrationIdentityOnly ? "fcr-locked" : undefined}>
+            <fieldset disabled={integrationIdentityOnly || fcrLocked("ref_operativo")} className={integrationIdentityOnly ? "fcr-locked" : fcrGroupClass("ref_operativo")}>
             <SectionLabel label="Referente operativo per Gruppo Solco" />
             <p style={{ fontSize: "0.82rem", color: MUTED, marginBottom: 12 }}>
               La persona di contatto per la gestione quotidiana del rapporto con il Gruppo. Può coincidere con il legale rappresentante.
@@ -871,7 +911,7 @@ export function RevampAlboBStep1DatiAziendaliPage() {
         </div>
 
         {/* Bottom nav */}
-        <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 40px", position: "sticky", bottom: 0 }}>
+        {!fcr.active && <div className="wizard-bottom-nav" style={{ background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 40px", position: "sticky", bottom: 0 }}>
           <Link className="wizard-nav-button wizard-nav-button-prev" to="/apply" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: "#fff", border: `1.5px solid ${GREEN}`, borderRadius: 6, fontWeight: 600, fontSize: "0.85rem", color: GREEN, textDecoration: "none" }}>
             <ArrowLeft size={15} /> Torna alla selezione
           </Link>
@@ -884,8 +924,9 @@ export function RevampAlboBStep1DatiAziendaliPage() {
           <button className="wizard-nav-button wizard-nav-button-next" type="submit" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 20px", background: GREEN, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, fontSize: "0.85rem", cursor: "pointer" }}>
             {integrationEdit || renewalEdit ? "Salva documento" : "Sezione successiva"} <ArrowRight size={15} />
           </button>
-        </div>
+        </div>}
       </form>
+      {auth && <FcrSubmitBar fcr={fcr} token={auth.token!} onSectionSaved={saveSectionProgrammatic} />}
     </div>
   );
 }

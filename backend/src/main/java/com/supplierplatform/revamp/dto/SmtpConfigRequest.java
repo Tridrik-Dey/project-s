@@ -5,5 +5,6 @@ import jakarta.validation.constraints.NotBlank;
 
 public record SmtpConfigRequest(
         @NotBlank @Email String email,
-        @NotBlank String password
+        String password,
+        Boolean debugOtpEnabled
 ) {}

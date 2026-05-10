@@ -29,6 +29,7 @@ public class RevampAlboBLegalRepIdExpiryReminderService {
     private final RevampAuditEventRepository auditEventRepository;
     private final RevampAuditService auditService;
     private final RevampAlboBLegalRepMailService mailService;
+    private final RevampDocumentRenewalRequestService documentRenewalRequestService;
 
     @Value("${app.reminders.albo-b-legal-rep-id-expiry.enabled:true}")
     private boolean enabled;
@@ -88,6 +89,17 @@ public class RevampAlboBLegalRepIdExpiryReminderService {
                     mailService.sendExpiryReminder(recipientEmail, companyName, expiryDate);
 
             if (result.sent()) {
+                documentRenewalRequestService.createReminderIfAbsent(
+                        applicationId,
+                        REQUEST_ID + "-" + applicationId,
+                        "S1",
+                        "ID_DOCUMENT",
+                        "Carta d'identita rappresentante legale",
+                        "ID_DOCUMENT",
+                        null,
+                        payload.path("legalRepresentative").path("idDocumentAttachment").deepCopy(),
+                        expiryDate
+                );
                 sent++;
                 auditService.append(new RevampAuditEventInputDto(
                         EVENT_KEY,

@@ -1095,8 +1095,8 @@ export function AdminInvitesPage({ mode }: AdminInvitesPageProps) {
                   }}
                 >
                   <div className="invite-user-cell">
-                    <strong>{row.invitedName?.trim() || row.invitedEmail.split("@")[0]}</strong>
-                    <p className="subtle">{row.invitedEmail}</p>
+                    <strong title={row.invitedName?.trim() || row.invitedEmail.split("@")[0]}>{row.invitedName?.trim() || row.invitedEmail.split("@")[0]}</strong>
+                    <p className="subtle" title={row.invitedEmail}>{row.invitedEmail}</p>
                   </div>
                   <span className={`invite-registry-pill ${row.registryType === "ALBO_A" ? "albo-a" : "albo-b"}`}>{registryLabel(row.registryType)}</span>
                   <span className={`invite-status-pill tone-${tone}`}>
@@ -1108,7 +1108,7 @@ export function AdminInvitesPage({ mode }: AdminInvitesPageProps) {
                     {UI_STATUS_LABEL[row.uiStatus]}
                   </span>
                   <span>{toDisplayDate(row.expiresAt)}</span>
-                  <span>{row.invitedByName || "n/d"}</span>
+                  <span title={row.invitedByName || "n/d"}>{row.invitedByName || "n/d"}</span>
                   <div className="invite-progress-cell">
                     <div className="invite-progress-summary" aria-label={`Avanzamento ${progress}%`}>
                       <span className="invite-progress-track" aria-hidden="true">

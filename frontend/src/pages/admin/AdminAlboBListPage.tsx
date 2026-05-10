@@ -41,6 +41,27 @@ function formatDate(value: string | null | undefined): string {
   return new Date(parsed).toLocaleDateString("it-IT");
 }
 
+function documentBadge(row: AdminRegistryProfileRow): { label: string; tone: "ok" | "warn" | "danger" | "neutral"; tooltip: string } {
+  if (row.expiredDocumentLabels && row.expiredDocumentLabels.length > 0) {
+    return { label: "Scaduti", tone: "danger", tooltip: `Documenti scaduti: ${row.expiredDocumentLabels.join(", ")}` };
+  }
+  if (row.pendingDocumentRenewal) {
+    const labels = row.pendingDocumentRenewalLabels && row.pendingDocumentRenewalLabels.length > 0
+      ? row.pendingDocumentRenewalLabels.join(", ")
+      : "documenti richiesti";
+    return { label: "Rinnovo", tone: "warn", tooltip: `Rinnovo aperto per: ${labels}` };
+  }
+  const expiryMs = row.expiresAt ? Date.parse(row.expiresAt) : NaN;
+  if (Number.isFinite(expiryMs)) {
+    const days = Math.ceil((expiryMs - Date.now()) / (24 * 60 * 60 * 1000));
+    const date = formatDate(row.expiresAt);
+    if (days < 0) return { label: "Scaduti", tone: "danger", tooltip: `Documento piu vicino scaduto il ${date}.` };
+    if (days <= 30) return { label: "In scadenza", tone: "warn", tooltip: `Documento piu vicino in scadenza il ${date}.` };
+    return { label: "Validi", tone: "ok", tooltip: `Nessun documento scaduto o in scadenza. Prossima scadenza nota: ${date}.` };
+  }
+  return { label: "Non disp.", tone: "neutral", tooltip: "Nessuna scadenza documento disponibile nella scheda." };
+}
+
 function scoreValue(profile: AdminRegistryProfileRow): number {
   const raw = profile.aggregateScore;
   if (typeof raw !== "number" || Number.isNaN(raw)) return 0;
@@ -157,9 +178,10 @@ export function AdminAlboBListPage() {
 
   const displayedRows = rows;
   const displayedActiveCount = displayedRows.filter((r) => r.status === "APPROVED").length;
-  const displayedRenewalCount = displayedRows.filter((r) => r.status === "RENEWAL_DUE").length;
-  const displayedAverageScore = displayedRows.length
-    ? displayedRows.reduce((sum, row) => sum + scoreValue(row), 0) / displayedRows.length
+  const displayedRenewalCount = displayedRows.filter((r) => r.pendingDocumentRenewal || r.status === "RENEWAL_DUE").length;
+  const scoredRows = displayedRows.filter((row) => typeof row.aggregateScore === "number" && Number.isFinite(row.aggregateScore));
+  const displayedAverageScore = scoredRows.length
+    ? scoredRows.reduce((sum, row) => sum + scoreValue(row), 0) / scoredRows.length
     : 0;
   return (
     <AdminCandidatureShell active="alboB">
@@ -173,20 +195,44 @@ export function AdminAlboBListPage() {
         </div>
 
         <div className="admin-albo-kpi-row">
-          <article className="panel admin-albo-kpi-card tone-blue">
-            <span><ShieldCheck size={15} /> Attive</span>
+          <article className="panel admin-albo-kpi-card superadmin-kpi-card tone-ok">
+            <div className="superadmin-kpi-head">
+              <h4>Attive</h4>
+              <span className="superadmin-kpi-icon" aria-hidden="true"><ShieldCheck /></span>
+            </div>
             <strong>{displayedActiveCount}</strong>
-            <small>aziende disponibili</small>
+            <div className="superadmin-kpi-foot">
+              <span className="superadmin-kpi-trend">aziende disponibili</span>
+              <span className={`superadmin-kpi-level level-${displayedActiveCount > 0 ? "ok" : "info"}`}>
+                {displayedActiveCount > 0 ? "Operativo" : "Vuoto"}
+              </span>
+            </div>
           </article>
-          <article className="panel admin-albo-kpi-card tone-amber">
-            <span><Clock3 size={15} /> Rinnovi</span>
+          <article className="panel admin-albo-kpi-card superadmin-kpi-card tone-attention">
+            <div className="superadmin-kpi-head">
+              <h4>Rinnovi</h4>
+              <span className="superadmin-kpi-icon" aria-hidden="true"><Clock3 /></span>
+            </div>
             <strong>{displayedRenewalCount}</strong>
-            <small>da monitorare</small>
+            <div className="superadmin-kpi-foot">
+              <span className="superadmin-kpi-trend">da monitorare</span>
+              <span className={`superadmin-kpi-level level-${displayedRenewalCount > 0 ? "attention" : "ok"}`}>
+                {displayedRenewalCount > 0 ? "Attenzione" : "Normale"}
+              </span>
+            </div>
           </article>
-          <article className="panel admin-albo-kpi-card tone-green">
-            <span><Award size={15} /> Media albo</span>
+          <article className="panel admin-albo-kpi-card superadmin-kpi-card tone-ok">
+            <div className="superadmin-kpi-head">
+              <h4>Media albo</h4>
+              <span className="superadmin-kpi-icon" aria-hidden="true"><Award /></span>
+            </div>
             <strong>{displayedAverageScore.toFixed(1)}</strong>
-            <small>punteggio medio</small>
+            <div className="superadmin-kpi-foot">
+              <span className="superadmin-kpi-trend">punteggio medio</span>
+              <span className={`superadmin-kpi-level level-${displayedAverageScore > 0 ? "ok" : "info"}`}>
+                {scoredRows.length > 0 ? `${scoredRows.length} valutate` : "Non valutato"}
+              </span>
+            </div>
           </article>
         </div>
 
@@ -227,7 +273,7 @@ export function AdminAlboBListPage() {
               <span>Settore / Sintesi</span>
               <span>Valutazione</span>
               <span>Stato</span>
-              <span>Scadenza</span>
+              <span>Documenti</span>
               <span>Aggiornata</span>
               <span>Azioni</span>
             </div>
@@ -242,28 +288,28 @@ export function AdminAlboBListPage() {
                 ateco ? `ATECO ${ateco}` : "",
                 territory
               ].filter(Boolean).join(" · ") || row.publicSummary || "—";
+              const docBadge = documentBadge(row);
               return (
                 <div key={row.id} className="admin-albo-row admin-unified-table-row albo-b admin-albo-row-modern">
                   <div className="admin-albo-main">
                     <div className="admin-albo-avatar">{initials(name)}</div>
                     <div>
-                      <strong>{name}</strong>
+                      <strong title={name}>{name}</strong>
                       {row.pendingFieldChange ? <span className="queue-assign-badge">Modifica dati in revisione</span> : null}
-                      {row.pendingDocumentRenewal ? <span className="queue-assign-badge">Rinnovo documenti</span> : null}
                       {row.expiredDocumentLabels && row.expiredDocumentLabels.length > 0 ? <span className="queue-assign-badge">Documenti scaduti</span> : null}
-                      <p className="subtle">{row.publicSummary || "—"}</p>
+                      <p className="subtle" title={row.publicSummary || "—"}>{row.publicSummary || "—"}</p>
                     </div>
                   </div>
-                  <span className="admin-albo-settore">
+                  <span className="admin-albo-settore" title={settore}>
                     {ateco ? <span className="albo-ateco-badge">{ateco}</span> : null}
                     {territory ? <><MapPin size={12} />{territory}</> : null}
                     {!ateco && !territory ? <span>{settore}</span> : null}
                   </span>
                   <span className="admin-albo-score">
-                    {score > 0 ? <>{scoreStars(score)} {score.toFixed(1)}</> : <span className="subtle">—</span>}
+                    {score > 0 ? <>{scoreStars(score)} {score.toFixed(1)}</> : <span className="subtle">Non valutato</span>}
                   </span>
                   <span className={`admin-albo-status tone-${statusTone(row.status)}`}>{statusLabel(row.status)}</span>
-                  <span>{formatDate(row.expiresAt)}</span>
+                  <span className={`admin-albo-doc-badge tone-${docBadge.tone}`} title={docBadge.tooltip}>{docBadge.label}</span>
                   <span>{formatDate(row.updatedAt)}</span>
                   <Link className="home-btn home-btn-secondary admin-action-btn btn-with-icon btn-icon-open" to={`/admin/albo-b/${row.id}`}>
                     Apri <ExternalLink size={13} />

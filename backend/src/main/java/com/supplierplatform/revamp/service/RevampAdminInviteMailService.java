@@ -18,9 +18,6 @@ public class RevampAdminInviteMailService {
 
     private final JavaMailSender javaMailSender;
 
-    @Value("${app.reviews.status-mail.from:no-reply@supplierplatform.local}")
-    private String fromEmail;
-
     @Value("${app.frontend.base-url:http://127.0.0.1:5173}")
     private String frontendBaseUrl;
 
@@ -52,7 +49,6 @@ public class RevampAdminInviteMailService {
             var message = javaMailSender.createMimeMessage();
             var helper = new MimeMessageHelper(message, StandardCharsets.UTF_8.name());
             helper.setTo(invite.email());
-            helper.setFrom(fromEmail);
             helper.setSubject(subject);
             helper.setText(body, false);
             javaMailSender.send(message);

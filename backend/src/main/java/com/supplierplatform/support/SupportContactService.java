@@ -1,5 +1,6 @@
 package com.supplierplatform.support;
 
+import com.supplierplatform.config.CentralizedJavaMailSender;
 import com.supplierplatform.support.dto.SupportContactRequest;
 import com.supplierplatform.validation.EmailValidators;
 import jakarta.mail.internet.MimeMessage;
@@ -19,15 +20,13 @@ import java.util.Locale;
 public class SupportContactService {
 
     private final JavaMailSender javaMailSender;
+    private final CentralizedJavaMailSender centralizedJavaMailSender;
 
     @Value("${app.support.contact.enabled:true}")
     private boolean supportContactEnabled;
 
     @Value("${app.support.contact.to:${spring.mail.username:}}")
     private String supportRecipient;
-
-    @Value("${app.support.contact.from:${app.reviews.status-mail.from:${spring.mail.username:no-reply@supplierplatform.local}}}")
-    private String fromEmail;
 
     @Value("${app.mail.retry.max-attempts:3}")
     private int mailRetryMaxAttempts;
@@ -46,7 +45,7 @@ public class SupportContactService {
         }
         request.setEmail(normalizedEmail);
 
-        if (!isPresent(supportRecipient)) {
+        if (!isPresent(resolveSupportRecipient())) {
             throw new IllegalStateException("Support destination email is not configured.");
         }
 
@@ -98,8 +97,8 @@ public class SupportContactService {
     private void sendSupportEmail(SupportContactRequest request) throws Exception {
         MimeMessage message = javaMailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
-        helper.setFrom(fromEmail);
-        helper.setTo(supportRecipient);
+        helper.setFrom(centralizedJavaMailSender.effectiveFromAddress());
+        helper.setTo(resolveSupportRecipient());
         helper.setReplyTo(request.getEmail());
         helper.setSubject(buildSupportSubject(request));
         helper.setText(buildSupportBody(request), false);
@@ -109,9 +108,9 @@ public class SupportContactService {
     private void sendAutoReplyEmail(SupportContactRequest request) throws Exception {
         MimeMessage message = javaMailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
-        helper.setFrom(fromEmail);
+        helper.setFrom(centralizedJavaMailSender.effectiveFromAddress());
         helper.setTo(request.getEmail());
-        helper.setReplyTo(isPresent(supportRecipient) ? supportRecipient : fromEmail);
+        helper.setReplyTo(resolveSupportRecipient());
         helper.setSubject(buildAutoReplySubject(request));
         helper.setText(buildAutoReplyBody(request), false);
         javaMailSender.send(message);
@@ -205,5 +204,9 @@ public class SupportContactService {
 
     private boolean isPresent(String value) {
         return value != null && !value.trim().isEmpty();
+    }
+
+    private String resolveSupportRecipient() {
+        return isPresent(supportRecipient) ? supportRecipient.trim() : centralizedJavaMailSender.effectiveFromAddress();
     }
 }

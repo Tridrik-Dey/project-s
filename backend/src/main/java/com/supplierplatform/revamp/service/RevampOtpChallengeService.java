@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.supplierplatform.common.EntityNotFoundException;
+import com.supplierplatform.config.CentralizedJavaMailSender;
+import com.supplierplatform.revamp.config.SmtpConfigStore;
 import com.supplierplatform.revamp.dto.OtpChallengeDispatchDto;
 import com.supplierplatform.revamp.dto.OtpChallengeVerifyDto;
 import com.supplierplatform.revamp.enums.OtpChallengeStatus;
@@ -47,18 +49,11 @@ public class RevampOtpChallengeService {
     private final RevampApplicationRepository applicationRepository;
     private final RevampApplicationSectionRepository applicationSectionRepository;
     private final JavaMailSender javaMailSender;
+    private final CentralizedJavaMailSender centralizedJavaMailSender;
+    private final SmtpConfigStore smtpConfigStore;
     private final ObjectMapper objectMapper;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-
-    @Value("${app.reviews.status-mail.from:no-reply@supplierplatform.local}")
-    private String fromEmail;
-
-    @Value("${spring.mail.username:}")
-    private String mailUsername;
-
-    @Value("${spring.mail.password:}")
-    private String mailPassword;
 
     @Transactional
     public OtpChallengeDispatchDto dispatchDeclarationSignatureOtp(UUID applicationId, User user) {
@@ -100,8 +95,7 @@ public class RevampOtpChallengeService {
             try {
                 sendOtpEmail(user.getEmail(), code, saved.getExpiresAt());
             } catch (Exception ex) {
-                deliveryMode = "SIMULATED";
-                debugCode = code;
+                throw otpDeliveryFailure(ex);
             }
         }
 
@@ -149,8 +143,7 @@ public class RevampOtpChallengeService {
             try {
                 sendEmailVerificationOtpEmail(user.getEmail(), code, saved.getExpiresAt());
             } catch (Exception ex) {
-                deliveryMode = "SIMULATED";
-                debugCode = code;
+                throw otpDeliveryFailure(ex);
             }
         }
 
@@ -272,8 +265,7 @@ public class RevampOtpChallengeService {
             try {
                 sendPasswordResetOtpEmail(user.getEmail(), code, saved.getExpiresAt());
             } catch (Exception ex) {
-                deliveryMode = "SIMULATED";
-                debugCode = code;
+                throw otpDeliveryFailure(ex);
             }
         }
 
@@ -328,7 +320,6 @@ public class RevampOtpChallengeService {
     private void sendPasswordResetOtpEmail(String to, String code, LocalDateTime expiresAt) throws Exception {
         MimeMessage message = javaMailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
-        helper.setFrom(fromEmail);
         helper.setTo(to);
         helper.setSubject("Codice OTP reimpostazione password");
         String body = """
@@ -342,14 +333,16 @@ public class RevampOtpChallengeService {
     }
 
     private boolean simulateOtpDelivery() {
-        return mailUsername == null || mailUsername.isBlank()
-                || mailPassword == null || mailPassword.isBlank();
+        return smtpConfigStore.isDebugOtpEnabled() || !centralizedJavaMailSender.hasConfiguredCredentials();
+    }
+
+    private IllegalStateException otpDeliveryFailure(Exception ex) {
+        return new IllegalStateException("OTP email could not be sent. Check SMTP settings or enable OTP debug mode.", ex);
     }
 
     private void sendOtpEmail(String to, String code, LocalDateTime expiresAt) throws Exception {
         MimeMessage message = javaMailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
-        helper.setFrom(fromEmail);
         helper.setTo(to);
         helper.setSubject("Codice OTP firma candidatura");
         String body = """
@@ -364,7 +357,6 @@ public class RevampOtpChallengeService {
     private void sendEmailVerificationOtpEmail(String to, String code, LocalDateTime expiresAt) throws Exception {
         MimeMessage message = javaMailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
-        helper.setFrom(fromEmail);
         helper.setTo(to);
         helper.setSubject("Codice OTP verifica email");
         String body = """

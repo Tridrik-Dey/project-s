@@ -52,6 +52,7 @@ public class RevampFieldChangeRequestService {
     private final UserRepository userRepository;
     private final RevampAuditService auditService;
     private final RevampGovernanceAuthorizationService governanceAuthorizationService;
+    private final RevampFieldChangeRequestMailService fieldChangeRequestMailService;
     private final ObjectMapper objectMapper;
 
     // ── Supplier: create a change request ──────────────────────────────────
@@ -143,6 +144,8 @@ public class RevampFieldChangeRequestService {
                         + "\",\"adminEmail\":\"" + esc(admin.getEmail()) + "\"}"
         ));
 
+        fieldChangeRequestMailService.sendUnlockNotice(saved, adminNote);
+
         return toDto(saved);
     }
 
@@ -177,6 +180,8 @@ public class RevampFieldChangeRequestService {
                         + "\",\"sectionKey\":\"" + esc(fcr.getSectionKey())
                         + "\",\"adminEmail\":\"" + esc(admin.getEmail()) + "\"}"
         ));
+
+        fieldChangeRequestMailService.sendAdminRejectNotice(saved, adminNote);
 
         return toDto(saved);
     }
@@ -243,7 +248,39 @@ public class RevampFieldChangeRequestService {
     // ── Called by review pipeline after Responsabile decides ──────────────
 
     @Transactional
-    public void handleReviewDecision(UUID reviewCaseId, ReviewDecision decision, UUID decidedByUserId) {
+    public FieldChangeRequestDto cancelUnlockedRequest(UUID fcrId, UUID supplierUserId) {
+        RevampFieldChangeRequest fcr = getFcr(fcrId);
+        RevampApplication application = fcr.getApplication();
+
+        if (fcr.getStatus() != FieldChangeRequestStatus.UNLOCKED) {
+            throw new IllegalStateException("Only UNLOCKED requests can be cancelled by the supplier.");
+        }
+        if (!application.getApplicantUser().getId().equals(supplierUserId)) {
+            throw new AccessDeniedException("You do not own this application.");
+        }
+
+        fcr.setStatus(FieldChangeRequestStatus.CANCELLED_BY_SUPPLIER);
+        RevampFieldChangeRequest saved = fcrRepository.save(fcr);
+
+        auditService.append(new RevampAuditEventInputDto(
+                "fcr.cancelled_by_supplier",
+                "FIELD_CHANGE_REQUEST",
+                saved.getId(),
+                supplierUserId,
+                "SUPPLIER",
+                null,
+                null,
+                "{\"status\":\"UNLOCKED\"}",
+                "{\"status\":\"CANCELLED_BY_SUPPLIER\"}",
+                "{\"applicationId\":\"" + application.getId()
+                        + "\",\"sectionKey\":\"" + esc(fcr.getSectionKey()) + "\"}"
+        ));
+
+        return toDto(saved);
+    }
+
+    @Transactional
+    public void handleReviewDecision(UUID reviewCaseId, ReviewDecision decision, UUID decidedByUserId, String reason) {
         fcrRepository.findByReviewCaseId(reviewCaseId).ifPresent(fcr -> {
             RevampApplication application = fcr.getApplication();
 
@@ -272,8 +309,10 @@ public class RevampFieldChangeRequestService {
                     "{\"status\":\"" + fcr.getStatus().name() + "\",\"appStatus\":\"APPROVED\"}",
                     "{\"applicationId\":\"" + application.getId()
                             + "\",\"sectionKey\":\"" + esc(fcr.getSectionKey())
-                            + "\",\"reviewCaseId\":\"" + reviewCaseId + "\"}"
+                            + "\",\"reviewCaseId\":\"" + reviewCaseId
+                            + "\",\"reason\":\"" + esc(reason) + "\"}"
             ));
+            fieldChangeRequestMailService.sendOutcomeNotice(fcr, decision, reason);
         });
     }
 
@@ -367,6 +406,7 @@ public class RevampFieldChangeRequestService {
         return new AdminFieldChangeRequestRowDto(
                 fcr.getId(),
                 application != null ? application.getId() : null,
+                profile != null ? profile.getId() : null,
                 application != null ? application.getProtocolCode() : null,
                 application != null ? application.getRegistryType() : null,
                 displayName,
@@ -425,6 +465,7 @@ public class RevampFieldChangeRequestService {
                 fcr.getBeforeValueJson() != null ? fcr.getBeforeValueJson().toString() : null,
                 fcr.getAfterValueJson() != null ? fcr.getAfterValueJson().toString() : null,
                 fcr.getReviewCase() != null ? fcr.getReviewCase().getId() : null,
+                fcr.getReviewCase() != null ? fcr.getReviewCase().getDecisionReason() : null,
                 fcr.getCreatedAt(),
                 fcr.getUpdatedAt()
         );

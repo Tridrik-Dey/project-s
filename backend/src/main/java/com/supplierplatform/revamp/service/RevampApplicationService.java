@@ -26,8 +26,10 @@ import com.supplierplatform.revamp.model.RevampAuditEvent;
 import com.supplierplatform.revamp.model.RevampDocumentRenewalRequest;
 import com.supplierplatform.revamp.model.RevampFieldChangeRequest;
 import com.supplierplatform.revamp.model.RevampIntegrationRequest;
+import com.supplierplatform.revamp.model.RevampNotificationEvent;
 import com.supplierplatform.revamp.model.RevampReviewCase;
 import com.supplierplatform.revamp.model.RevampInvite;
+import com.supplierplatform.revamp.model.RevampSupplierRegistryProfile;
 import com.supplierplatform.revamp.repository.RevampApplicationRepository;
 import com.supplierplatform.revamp.repository.RevampApplicationSectionRepository;
 import com.supplierplatform.revamp.repository.RevampApplicationAttachmentRepository;
@@ -35,9 +37,11 @@ import com.supplierplatform.revamp.repository.RevampAuditEventRepository;
 import com.supplierplatform.revamp.repository.RevampDocumentRenewalRequestRepository;
 import com.supplierplatform.revamp.repository.RevampFieldChangeRequestRepository;
 import com.supplierplatform.revamp.repository.RevampIntegrationRequestRepository;
+import com.supplierplatform.revamp.repository.RevampNotificationEventRepository;
 import com.supplierplatform.revamp.repository.RevampReviewCaseRepository;
 import com.supplierplatform.revamp.repository.RevampInviteRepository;
 import com.supplierplatform.revamp.repository.RevampOtpChallengeRepository;
+import com.supplierplatform.revamp.repository.RevampSupplierRegistryProfileRepository;
 import com.supplierplatform.user.User;
 import com.supplierplatform.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -86,6 +90,8 @@ public class RevampApplicationService {
     private final RevampAuditEventRepository auditEventRepository;
     private final RevampFieldChangeRequestRepository fieldChangeRequestRepository;
     private final RevampDocumentRenewalRequestRepository documentRenewalRequestRepository;
+    private final RevampSupplierRegistryProfileRepository supplierRegistryProfileRepository;
+    private final RevampNotificationEventRepository notificationEventRepository;
     private final UserRepository userRepository;
     private final RevampApplicationMapper applicationMapper;
     private final RevampProtocolCodeService protocolCodeService;
@@ -294,6 +300,18 @@ public class RevampApplicationService {
 
         JsonNode merged = currentSection.getPayloadJson().deepCopy();
         for (RevampDocumentRenewalRequest request : activeRequests) {
+            if ("S4".equals(request.getSectionKey())
+                    && "CERTIFICATION".equals(request.getDocumentType())
+                    && request.getCertificationKey() != null
+                    && !request.getCertificationKey().isBlank()) {
+                merged = RevampDocumentRenewalJson.mergeCertificationRenewal(
+                        objectMapper,
+                        merged,
+                        incomingPayload,
+                        request.getCertificationKey()
+                );
+                continue;
+            }
             JsonNode incomingAttachment = RevampDocumentRenewalJson.findMatchingDocument(
                     incomingPayload,
                     application.getRegistryType(),
@@ -525,9 +543,34 @@ public class RevampApplicationService {
             throw new AccessDeniedException("Not authorized to read communications for this application");
         }
 
-        return auditEventRepository.findByEntityTypeAndEntityIdOrderByOccurredAtDesc("REVAMP_APPLICATION", applicationId).stream()
+        List<RevampAuditEvent> applicationEvents = auditEventRepository
+                .findByEntityTypeAndEntityIdOrderByOccurredAtDesc("REVAMP_APPLICATION", applicationId);
+        List<UUID> fieldChangeIds = fieldChangeRequestRepository.findByApplicationIdOrderByCreatedAtDesc(applicationId)
+                .stream()
+                .map(RevampFieldChangeRequest::getId)
+                .toList();
+        Stream<RevampAuditEvent> fieldChangeEvents = fieldChangeIds.isEmpty()
+                ? Stream.empty()
+                : auditEventRepository
+                        .findByEntityTypeAndEntityIdInOrderByOccurredAtDesc("FIELD_CHANGE_REQUEST", fieldChangeIds)
+                        .stream();
+        Stream<RevampApplicationCommunicationDto> notificationCommunications = supplierRegistryProfileRepository
+                .findByApplicationId(applicationId)
+                .stream()
+                .map(RevampSupplierRegistryProfile::getId)
+                .flatMap(profileId -> notificationEventRepository
+                        .findByEntityTypeAndEntityIdOrderByCreatedAtDesc("REVAMP_SUPPLIER_PROFILE", profileId)
+                        .stream())
                 .map(this::toCommunication)
-                .filter(message -> message != null)
+                .filter(message -> message != null);
+
+        return Stream.concat(
+                        Stream.concat(applicationEvents.stream(), fieldChangeEvents)
+                                .map(this::toCommunication)
+                                .filter(message -> message != null),
+                        notificationCommunications
+                )
+                .sorted(Comparator.comparing(RevampApplicationCommunicationDto::occurredAt).reversed())
                 .toList();
     }
 
@@ -972,20 +1015,67 @@ public class RevampApplicationService {
     private RevampApplicationCommunicationDto toCommunication(RevampAuditEvent event) {
         String message = switch (event.getEventKey()) {
             case "revamp.application.submitted" -> "Candidatura ricevuta";
-            case "revamp.review.opened" -> "Candidatura presa in carico";
             case "revamp.review.verified" -> "Verifica documentale completata";
             case "revamp.review.integration_requested" -> "Richiesta integrazione inviata";
             case "revamp.application.integration.answered" -> "Integrazione ricevuta";
             case "revamp.review.decided" -> decisionMessage(event);
+            case "revamp.albo-b.legal-rep-id.expiry-reminder.sent" -> "Promemoria: la carta d'identita del rappresentante legale scade tra 30 giorni.";
+            case "revamp.albo-b.cert-expiry-reminder.sent" -> "Promemoria: documenti e certificazioni in scadenza il mese prossimo.";
             case "revamp.carta-identita.expiry-reminder.sent" -> "Promemoria: la tua carta d'identità scade tra 30 giorni.";
+            case "fcr.created" -> "Richiesta modifica dati inviata" + fieldChangeSectionSuffix(event);
+            case "fcr.unlocked" -> "Modifica dati sbloccata" + fieldChangeSectionSuffix(event);
+            case "fcr.cancelled_by_supplier" -> "Richiesta modifica dati annullata dal fornitore" + fieldChangeSectionSuffix(event);
+            case "fcr.rejected_by_admin" -> "Richiesta modifica dati respinta" + fieldChangeSectionSuffix(event);
+            case "fcr.submitted" -> "Modifica dati inviata in revisione" + fieldChangeSectionSuffix(event);
+            case "fcr.approved" -> "Modifica dati approvata" + fieldChangeSectionSuffix(event);
+            case "fcr.rejected" -> "Modifica dati respinta" + fieldChangeSectionSuffix(event);
             default -> null;
         };
         return message == null ? null : new RevampApplicationCommunicationDto(event.getEventKey(), message, event.getOccurredAt());
     }
 
+    private RevampApplicationCommunicationDto toCommunication(RevampNotificationEvent event) {
+        String message = switch (event.getEventKey()) {
+            case "admin.compose-email" -> {
+                String subject = event.getPayloadJson() != null && event.getPayloadJson().hasNonNull("subject")
+                        ? event.getPayloadJson().path("subject").asText()
+                        : "";
+                yield subject == null || subject.isBlank()
+                        ? "Email inviata dal team Solco"
+                        : "Email inviata dal team Solco - " + subject;
+            }
+            default -> null;
+        };
+        LocalDateTime occurredAt = event.getSentAt() != null ? event.getSentAt() : event.getCreatedAt();
+        return message == null ? null : new RevampApplicationCommunicationDto(event.getEventKey(), message, occurredAt);
+    }
+
+    private String fieldChangeSectionSuffix(RevampAuditEvent event) {
+        JsonNode metadata = event.getMetadataJson();
+        String sectionKey = metadata != null && metadata.hasNonNull("sectionKey")
+                ? metadata.path("sectionKey").asText()
+                : "";
+        return sectionKey == null || sectionKey.isBlank() ? "" : " - Sezione " + sectionKey;
+    }
+
     private String decisionMessage(RevampAuditEvent event) {
         JsonNode metadata = event.getMetadataJson();
         String decision = metadata != null && metadata.hasNonNull("decision") ? metadata.path("decision").asText() : "";
+        String reviewType = metadata != null && metadata.hasNonNull("reviewType") ? metadata.path("reviewType").asText() : "";
+        if ("DOCUMENT_RENEWAL".equals(reviewType)) {
+            return switch (decision) {
+                case "APPROVED" -> "Rinnovo documenti approvato";
+                case "REJECTED" -> "Rinnovo documenti respinto";
+                default -> "Decisione rinnovo documenti registrata";
+            };
+        }
+        if ("FIELD_CHANGE".equals(reviewType)) {
+            return switch (decision) {
+                case "APPROVED" -> "Modifica dati approvata";
+                case "REJECTED" -> "Modifica dati respinta";
+                default -> "Decisione modifica dati registrata";
+            };
+        }
         return switch (decision) {
             case "APPROVED" -> "Candidatura approvata";
             case "REJECTED" -> "Candidatura non approvata";

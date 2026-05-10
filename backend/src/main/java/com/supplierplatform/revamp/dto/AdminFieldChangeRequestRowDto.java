@@ -9,6 +9,7 @@ import java.util.UUID;
 public record AdminFieldChangeRequestRowDto(
         UUID id,
         UUID applicationId,
+        UUID profileId,
         String protocolCode,
         RegistryType registryType,
         String supplierDisplayName,

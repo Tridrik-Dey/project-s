@@ -1,4 +1,5 @@
 import { apiRequest } from "./http";
+import type { DocumentRenewalRequest } from "./documentRenewalRequestApi";
 
 export interface AdminReviewCaseSummary {
   id: string;
@@ -36,6 +37,9 @@ export interface AdminReviewCaseSummary {
   documentRenewalDocumentLabel?: string | null;
   documentRenewalOldAttachmentJson?: string | null;
   documentRenewalNewAttachmentJson?: string | null;
+  documentRenewalSubmittedCount?: number | null;
+  documentRenewalPendingSupplierCount?: number | null;
+  activeDocumentRenewalRequests?: DocumentRenewalRequest[] | null;
 }
 
 export interface AdminIntegrationRequestSummary {
