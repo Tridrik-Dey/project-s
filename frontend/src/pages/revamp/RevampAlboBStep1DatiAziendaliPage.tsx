@@ -766,7 +766,7 @@ export function RevampAlboBStep1DatiAziendaliPage() {
         </div>
       ) : <StepBar active={0} />}
 
-      <form onSubmit={handleNext} noValidate>
+      <form className="revamp-albo-b-step1-form" onSubmit={handleNext} noValidate>
         <div style={{ maxWidth: 1040, margin: "28px auto", padding: "0 24px" }}>
           <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", padding: "28px 32px" }}>
 

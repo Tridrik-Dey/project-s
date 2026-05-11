@@ -123,7 +123,7 @@ export function VerifyOtpPage() {
         Abbiamo inviato un codice OTP al tuo indirizzo email. Inseriscilo per continuare.
       </p>
       <form onSubmit={onSubmit} className="grid-form auth-form">
-        <label className={`floating-field ${otpCode.trim() ? "has-value" : ""}`}>
+        <label className={`floating-field auth-otp-field ${otpCode.trim() ? "has-value" : ""}`}>
           <ShieldCheck className="floating-field-icon" />
           <input
             className="floating-input auth-input"

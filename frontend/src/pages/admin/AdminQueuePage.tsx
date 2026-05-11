@@ -110,9 +110,11 @@ function shouldRefreshQueue(event: DashboardActivityEvent): boolean {
     key.startsWith("revamp.review.")
     || key.startsWith("revamp.application.")
     || key.startsWith("fcr.")
+    || key.startsWith("document_renewal.")
     || key.includes("integration")
     || event.entityType === "REVAMP_APPLICATION"
     || event.entityType === "FIELD_CHANGE_REQUEST"
+    || event.entityType === "DOCUMENT_RENEWAL_REQUEST"
   );
 }
 
@@ -144,7 +146,7 @@ function fieldChangeRequestedGroupLabel(sectionKey: string | null | undefined): 
 }
 
 function isNewApplicationAttention(row: AdminReviewCaseSummary): boolean {
-  return row.status === "PENDING_ASSIGNMENT" && row.reviewType !== "FIELD_CHANGE" && row.reviewType !== "DOCUMENT_RENEWAL";
+  return row.status === "PENDING_ASSIGNMENT" && row.reviewType !== "FIELD_CHANGE";
 }
 
 function isFieldChangeReview(row: AdminReviewCaseSummary): boolean {

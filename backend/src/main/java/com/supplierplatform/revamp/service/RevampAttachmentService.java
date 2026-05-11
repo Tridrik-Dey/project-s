@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.supplierplatform.revamp.enums.RevampAttachmentDocumentType;
+import com.supplierplatform.revamp.enums.RegistryType;
 import com.supplierplatform.revamp.model.RevampApplication;
 import com.supplierplatform.revamp.model.RevampApplicationAttachment;
 import com.supplierplatform.revamp.repository.RevampApplicationAttachmentRepository;
@@ -39,7 +40,7 @@ public class RevampAttachmentService {
 
         List<RevampApplicationAttachment> attachments = switch (sectionKey) {
             case "S4" -> extractS4Attachments(application, objectPayload);
-            case "S1" -> extractS1ProfilePhotoAttachment(application, objectPayload);
+            case "S1" -> extractS1Attachments(application, objectPayload);
             default -> List.of();
         };
 
@@ -87,7 +88,14 @@ public class RevampAttachmentService {
         return out;
     }
 
-    private List<RevampApplicationAttachment> extractS1ProfilePhotoAttachment(RevampApplication application, ObjectNode payload) {
+    private List<RevampApplicationAttachment> extractS1Attachments(RevampApplication application, ObjectNode payload) {
+        if (application.getRegistryType() == RegistryType.ALBO_B) {
+            return extractAlboBLegalRepIdAttachment(application, payload);
+        }
+        return extractAlboAIdAttachment(application, payload);
+    }
+
+    private List<RevampApplicationAttachment> extractAlboAIdAttachment(RevampApplication application, ObjectNode payload) {
         JsonNode photoNode = payload.path("profilePhotoAttachment");
         if (!(photoNode instanceof ObjectNode photo)) {
             return List.of();
@@ -100,7 +108,12 @@ public class RevampAttachmentService {
         }
 
         RevampAttachmentDocumentType type = parseDocumentType(photo.path("documentType").asText("OTHER"));
+        LocalDateTime expiresAt = parseDateTime(firstNonBlank(photo.path("expiresAt").asText(""), payload.path("idDocumentExpiry").asText("")));
         photo.put("documentType", type.name());
+        if (expiresAt != null) {
+            photo.put("expiresAt", expiresAt.toLocalDate().toString());
+        }
+        upsertExpiryFlags(photo, expiresAt);
 
         RevampApplicationAttachment attachment = new RevampApplicationAttachment();
         attachment.setApplication(application);
@@ -111,7 +124,54 @@ public class RevampAttachmentService {
         attachment.setMimeType(blankToNull(photo.path("mimeType").asText("")));
         attachment.setSizeBytes(parseLong(photo.path("sizeBytes").asText("")));
         attachment.setStorageKey(storageKey);
-        attachment.setExpiresAt(parseDateTime(photo.path("expiresAt").asText("")));
+        attachment.setExpiresAt(expiresAt);
+        return List.of(attachment);
+    }
+
+    private List<RevampApplicationAttachment> extractAlboBLegalRepIdAttachment(RevampApplication application, ObjectNode payload) {
+        JsonNode representativeNode = payload.path("legalRepresentative");
+        if (!(representativeNode instanceof ObjectNode representative)) {
+            return List.of();
+        }
+        JsonNode attachmentNode = representative.path("idDocumentAttachment");
+        if (!(attachmentNode instanceof ObjectNode attachmentJson)) {
+            attachmentNode = payload.path("lrCartaIdentita");
+        }
+        if (!(attachmentNode instanceof ObjectNode document)) {
+            return List.of();
+        }
+
+        String fileName = document.path("fileName").asText("").trim();
+        String storageKey = document.path("storageKey").asText("").trim();
+        if (fileName.isBlank() || storageKey.isBlank()) {
+            return List.of();
+        }
+
+        RevampAttachmentDocumentType type = parseDocumentType(document.path("documentType").asText("OTHER"));
+        LocalDateTime expiresAt = parseDateTime(firstNonBlank(
+                document.path("expiresAt").asText(""),
+                representative.path("idDocumentExpiry").asText(""),
+                payload.path("lrIdDocumentExpiry").asText("")
+        ));
+        document.put("documentType", type.name());
+        if (expiresAt != null) {
+            document.put("expiresAt", expiresAt.toLocalDate().toString());
+        }
+        upsertExpiryFlags(document, expiresAt);
+        representative.set("idDocumentAttachment", document);
+        payload.set("legalRepresentative", representative);
+        payload.set("lrCartaIdentita", document);
+
+        RevampApplicationAttachment attachment = new RevampApplicationAttachment();
+        attachment.setApplication(application);
+        attachment.setSectionKey("S1");
+        attachment.setFieldKey("legalRepresentative.idDocumentAttachment");
+        attachment.setDocumentType(type);
+        attachment.setFileName(fileName);
+        attachment.setMimeType(blankToNull(document.path("mimeType").asText("")));
+        attachment.setSizeBytes(parseLong(document.path("sizeBytes").asText("")));
+        attachment.setStorageKey(storageKey);
+        attachment.setExpiresAt(expiresAt);
         return List.of(attachment);
     }
 
@@ -173,5 +233,14 @@ public class RevampAttachmentService {
         if (raw == null) return null;
         String trimmed = raw.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) return "";
+        for (String value : values) {
+            String normalized = blankToNull(value);
+            if (normalized != null) return normalized;
+        }
+        return "";
     }
 }

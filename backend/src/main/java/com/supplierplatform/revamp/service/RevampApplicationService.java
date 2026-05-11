@@ -329,7 +329,54 @@ public class RevampApplicationService {
                         request.getCertificationKey(),
                         incomingAttachment
                 );
+                merged = mergeRenewalDocumentMetadata(
+                        merged,
+                        incomingPayload,
+                        application.getRegistryType(),
+                        request.getSectionKey(),
+                        request.getDocumentType()
+                );
             }
+        }
+        return merged;
+    }
+
+    private JsonNode mergeRenewalDocumentMetadata(
+            JsonNode mergedPayload,
+            JsonNode incomingPayload,
+            RegistryType registryType,
+            String sectionKey,
+            String documentType
+    ) {
+        if (!"S1".equals(sectionKey)
+                || !"ID_DOCUMENT".equals(documentType)
+                || !(mergedPayload instanceof ObjectNode merged)
+                || incomingPayload == null
+                || !incomingPayload.isObject()) {
+            return mergedPayload;
+        }
+
+        if (registryType == RegistryType.ALBO_B) {
+            JsonNode incomingRepresentative = incomingPayload.path("legalRepresentative");
+            String nestedExpiry = incomingRepresentative.path("idDocumentExpiry").asText("");
+            String legacyExpiry = incomingPayload.path("lrIdDocumentExpiry").asText("");
+            String expiry = !nestedExpiry.isBlank() ? nestedExpiry : legacyExpiry;
+            if (expiry.isBlank()) {
+                return merged;
+            }
+
+            ObjectNode representative = merged.path("legalRepresentative").isObject()
+                    ? (ObjectNode) merged.path("legalRepresentative").deepCopy()
+                    : objectMapper.createObjectNode();
+            representative.put("idDocumentExpiry", expiry);
+            merged.set("legalRepresentative", representative);
+            merged.put("lrIdDocumentExpiry", expiry);
+            return merged;
+        }
+
+        String expiry = incomingPayload.path("idDocumentExpiry").asText("");
+        if (!expiry.isBlank()) {
+            merged.put("idDocumentExpiry", expiry);
         }
         return merged;
     }

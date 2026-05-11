@@ -81,13 +81,19 @@ final class RevampDocumentRenewalJson {
                     : objectMapper.createObjectNode();
             if ("no".equalsIgnoreCase(incomingRecord.path("presente").asText(""))) {
                 nextRecord.put("presente", "no");
+                nextRecord.put("enteCertificatore", "");
+                nextRecord.put("scadenza", "");
+                nextRecord.put("fileName", "");
+                nextRecord.set("attachment", objectMapper.nullNode());
                 certifications.set(certificationKey, nextRecord);
                 copy.set("certificazioni", certifications);
+                syncLegacyCertificationFlag(copy, certificationKey, false);
                 removeMatchingAttachment(copy, objectMapper, "CERTIFICATION", certificationKey);
                 return copy;
             }
             certifications.set(certificationKey, incomingRecord.deepCopy());
             copy.set("certificazioni", certifications);
+            syncLegacyCertificationFlag(copy, certificationKey, true);
         }
 
         if (incomingAttachment != null && incomingAttachment.isObject()) {
@@ -183,6 +189,12 @@ final class RevampDocumentRenewalJson {
         certifications.set(certificationKey, record);
         copy.set("certificazioni", certifications);
         return copy;
+    }
+
+    private static void syncLegacyCertificationFlag(ObjectNode payload, String certificationKey, boolean present) {
+        if ("iso9001".equalsIgnoreCase(certificationKey)) {
+            payload.put("iso9001", present ? "YES" : "NO");
+        }
     }
 
     static boolean matches(JsonNode attachment, String documentType, String certificationKey) {

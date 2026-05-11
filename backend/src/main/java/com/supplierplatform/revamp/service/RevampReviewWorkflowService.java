@@ -230,7 +230,7 @@ public class RevampReviewWorkflowService {
                 "{\"reviewCaseId\":\"" + savedCase.getId()
                         + "\",\"reviewType\":\"" + (documentRenewalReview ? "DOCUMENT_RENEWAL" : "APPLICATION")
                         + "\",\"reviewCaseIds\":" + toJsonArray(savedCases.stream().map(item -> item.getId().toString()).toList())
-                        + "\",\"actorName\":\"" + esc(actorName)
+                        + ",\"actorName\":\"" + esc(actorName)
                         + "\",\"verificationOutcome\":\"" + verificationOutcome.name()
                         + "\",\"applicantName\":\"" + esc(reviewCase.getApplication() != null && reviewCase.getApplication().getApplicantUser() != null ? reviewCase.getApplication().getApplicantUser().getEmail() : "") + "\"}"
         ));
@@ -382,9 +382,6 @@ public class RevampReviewWorkflowService {
         }
 
         applicationRepository.save(application);
-        if (decision == ReviewDecision.APPROVED) {
-            profileProjectionService.projectApprovedApplication(application.getId());
-        }
         List<RevampReviewCase> savedCases = reviewCaseRepository.saveAll(targetReviewCases);
         RevampReviewCase savedCase = savedCases.stream()
                 .filter(item -> item.getId().equals(reviewCaseId))
@@ -400,6 +397,9 @@ public class RevampReviewWorkflowService {
             );
         } else {
             documentRenewalRequestService.handleReviewDecision(savedCase.getId(), decision, decidedByUserId, reason);
+        }
+        if (decision == ReviewDecision.APPROVED) {
+            profileProjectionService.projectApprovedApplication(application.getId());
         }
         String actorRole = resolveActorGovernanceRole(decidedByUserId);
         List<String> renewalDocumentLabels = documentRenewalReview

@@ -12887,6 +12887,13 @@ body {
   border-color: var(--field-border-disabled) !important;
 }
 
+.auth-form > label.floating-field.auth-otp-field > .auth-input {
+  text-align: center;
+  letter-spacing: 0.08em;
+  padding-left: 38px !important;
+  padding-right: 38px !important;
+}
+
 .auth-submit-btn {
   position: relative;
   overflow: hidden;
@@ -27025,6 +27032,14 @@ body {
 }
 
 /* ── FCR edit mode ──────────────────────────────────────────────────────── */
+
+.revamp-registry-start-form fieldset,
+.revamp-albo-b-step1-form fieldset {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
 
 .fcr-locked {
   opacity: 1;

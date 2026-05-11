@@ -886,7 +886,7 @@ export function RevampRegistryStartPage() {
       </div>}
 
       {/* ── Form ── */}
-      <form onSubmit={handleNext} noValidate>
+      <form className="revamp-registry-start-form" onSubmit={handleNext} noValidate>
         <div style={{ maxWidth: 980, margin: "28px auto", padding: "0 24px" }}>
           <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb", padding: "28px 32px" }}>
 

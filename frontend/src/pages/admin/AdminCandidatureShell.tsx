@@ -129,7 +129,7 @@ export function AdminCandidatureShell({ active, children }: AdminCandidatureShel
           ]
         : [];
       const newCandidatureIds = queue
-        .filter((item) => item.status === "PENDING_ASSIGNMENT" && item.reviewType !== "FIELD_CHANGE" && item.reviewType !== "DOCUMENT_RENEWAL")
+        .filter((item) => item.status === "PENDING_ASSIGNMENT" && item.reviewType !== "FIELD_CHANGE")
         .map((item) => item.id);
       setUnseenFieldChangeCount(getUnseenAdminAttentionIds("fieldChanges", fieldChangeIds, auth.userId, auth.email).length);
       setUnseenNewCandidatureCount(getUnseenAdminAttentionIds("newCandidatures", newCandidatureIds, auth.userId, auth.email).length);
@@ -176,8 +176,10 @@ export function AdminCandidatureShell({ active, children }: AdminCandidatureShel
     shouldRefresh: (event) => {
       const key = event.eventKey ?? "";
       return key.startsWith("fcr.")
+        || key.startsWith("document_renewal.")
         || key.startsWith("revamp.application.")
         || event.entityType === "FIELD_CHANGE_REQUEST"
+        || event.entityType === "DOCUMENT_RENEWAL_REQUEST"
         || event.entityType === "REVAMP_APPLICATION";
     },
     onRefresh: () => loadCandidatureAttention()

@@ -1,1 +1,0 @@
-import{b as u}from"./index-DVENrf29.js";function o(n,t){const e=new URLSearchParams;t!=null&&t.entityType&&e.set("entityType",t.entityType),t!=null&&t.entityId&&e.set("entityId",t.entityId),t!=null&&t.requestId&&e.set("requestId",t.requestId);const i=e.toString(),d=i?`/api/v2/audit/events?${i}`:"/api/v2/audit/events";return u(d,{},n)}export{o as g};

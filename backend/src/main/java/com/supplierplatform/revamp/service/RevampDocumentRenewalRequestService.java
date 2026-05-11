@@ -2,6 +2,7 @@ package com.supplierplatform.revamp.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.supplierplatform.common.EntityNotFoundException;
 import com.supplierplatform.revamp.dto.DocumentRenewalRequestDto;
 import com.supplierplatform.revamp.dto.RevampAuditEventInputDto;
@@ -24,7 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -180,6 +184,7 @@ public class RevampDocumentRenewalRequestService {
             if (newAttachment == null || newAttachment.isMissingNode() || newAttachment.isNull()) {
                 throw new IllegalStateException("Upload or update the requested document before submitting: " + request.getDocumentLabel());
             }
+            validateRenewedExpiry(latest.getPayloadJson(), request);
 
             request.setNewAttachmentJson(newAttachment.deepCopy());
             request.setReviewCase(savedCase);
@@ -226,6 +231,7 @@ public class RevampDocumentRenewalRequestService {
         if (newAttachment == null || newAttachment.isMissingNode() || newAttachment.isNull()) {
             throw new IllegalStateException("Upload or update the requested document before submitting.");
         }
+        validateRenewedExpiry(latest.getPayloadJson(), request);
 
         RevampReviewCase reviewCase = new RevampReviewCase();
         reviewCase.setApplication(application);
@@ -290,6 +296,7 @@ public class RevampDocumentRenewalRequestService {
         for (RevampDocumentRenewalRequest request : requests) {
             if (decision == ReviewDecision.APPROVED) {
                 request.setStatus(DocumentRenewalRequestStatus.APPROVED);
+                currentExpiry(request).ifPresent(request::setExpiryDate);
                 application.setStatus(ApplicationStatus.APPROVED);
             } else {
                 request.setStatus(DocumentRenewalRequestStatus.REJECTED);
@@ -403,9 +410,102 @@ public class RevampDocumentRenewalRequestService {
                                     request.getCertificationKey(),
                                     request.getOldAttachmentJson()
                             );
+                    restored = restoreOriginalS1Expiry(restored, request);
                     section.setPayloadJson(restored);
                     sectionRepository.save(section);
                 });
+    }
+
+    private void validateRenewedExpiry(JsonNode payload, RevampDocumentRenewalRequest request) {
+        if (payload == null || request == null || request.getExpiryDate() == null) return;
+        if ("S4".equals(request.getSectionKey())
+                && "CERTIFICATION".equals(request.getDocumentType())
+                && RevampDocumentRenewalJson.isCertificationDeclined(payload, request.getCertificationKey())) {
+            return;
+        }
+        Optional<LocalDate> nextExpiry = currentExpiry(payload, request);
+        if (nextExpiry.isEmpty()) {
+            throw new IllegalStateException("Update the document expiry date before submitting: " + request.getDocumentLabel());
+        }
+        if (!nextExpiry.get().isAfter(request.getExpiryDate())) {
+            throw new IllegalStateException("The new document expiry date must be after the previous expiry date: " + request.getDocumentLabel());
+        }
+    }
+
+    private Optional<LocalDate> currentExpiry(RevampDocumentRenewalRequest request) {
+        if (request == null || request.getApplication() == null || request.getSectionKey() == null) {
+            return Optional.empty();
+        }
+        return sectionRepository
+                .findByApplicationIdAndSectionKeyAndIsLatestTrue(request.getApplication().getId(), request.getSectionKey())
+                .flatMap(section -> currentExpiry(section.getPayloadJson(), request));
+    }
+
+    private Optional<LocalDate> currentExpiry(JsonNode payload, RevampDocumentRenewalRequest request) {
+        if (payload == null || request == null) return Optional.empty();
+        if ("S1".equals(request.getSectionKey()) && "ID_DOCUMENT".equals(request.getDocumentType())) {
+            if (request.getApplication() != null && request.getApplication().getRegistryType() == com.supplierplatform.revamp.enums.RegistryType.ALBO_B) {
+                return parseExpiryDate(payload.path("legalRepresentative").path("idDocumentExpiry").asText(null))
+                        .or(() -> parseExpiryDate(payload.path("lrIdDocumentExpiry").asText(null)));
+            }
+            return parseExpiryDate(payload.path("idDocumentExpiry").asText(null));
+        }
+        if ("S4".equals(request.getSectionKey())
+                && "CERTIFICATION".equals(request.getDocumentType())
+                && request.getCertificationKey() != null
+                && !request.getCertificationKey().isBlank()) {
+            JsonNode record = RevampDocumentRenewalJson.findCertificationRecord(payload, request.getCertificationKey());
+            Optional<LocalDate> recordExpiry = parseExpiryDate(record != null ? record.path("scadenza").asText(null) : null);
+            if (recordExpiry.isPresent()) {
+                return recordExpiry;
+            }
+        }
+        JsonNode evidence = findRenewalEvidence(payload, request);
+        if (evidence == null || evidence.isMissingNode() || evidence.isNull()) {
+            evidence = findMatchingAttachment(payload, request);
+        }
+        if (evidence == null || evidence.isMissingNode() || evidence.isNull()) {
+            return Optional.empty();
+        }
+        JsonNode expiryEvidence = evidence;
+        return parseExpiryDate(expiryEvidence.path("expiryDate").asText(null))
+                .or(() -> parseExpiryDate(expiryEvidence.path("expiresAt").asText(null)))
+                .or(() -> parseExpiryDate(expiryEvidence.path("scadenza").asText(null)));
+    }
+
+    private JsonNode restoreOriginalS1Expiry(JsonNode payload, RevampDocumentRenewalRequest request) {
+        if (!(payload instanceof ObjectNode copy) || request == null || request.getExpiryDate() == null) return payload;
+        if (!"S1".equals(request.getSectionKey()) || !"ID_DOCUMENT".equals(request.getDocumentType())) return payload;
+        String expiry = request.getExpiryDate().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        if (request.getApplication() != null && request.getApplication().getRegistryType() == com.supplierplatform.revamp.enums.RegistryType.ALBO_B) {
+            ObjectNode representative = copy.path("legalRepresentative").isObject()
+                    ? (ObjectNode) copy.path("legalRepresentative").deepCopy()
+                    : objectMapper.createObjectNode();
+            representative.put("idDocumentExpiry", expiry);
+            copy.set("legalRepresentative", representative);
+            copy.put("lrIdDocumentExpiry", expiry);
+            return copy;
+        }
+        copy.put("idDocumentExpiry", expiry);
+        return copy;
+    }
+
+    private Optional<LocalDate> parseExpiryDate(String raw) {
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        String value = raw.trim();
+        try {
+            return Optional.of(LocalDate.parse(value));
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return Optional.of(LocalDateTime.parse(value).toLocalDate());
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return Optional.of(YearMonth.parse(value, DateTimeFormatter.ofPattern("MM/yyyy")).atEndOfMonth());
+        } catch (DateTimeParseException ignored) {
+            return Optional.empty();
+        }
     }
 
     private JsonNode findRenewalEvidence(JsonNode payload, RevampDocumentRenewalRequest request) {

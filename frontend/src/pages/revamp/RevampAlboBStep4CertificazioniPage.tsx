@@ -409,6 +409,7 @@ export function RevampAlboBStep4CertificazioniPage() {
           documentType: "CERTIFICATION",
           certificationKey: cert.key,
           certificationLabel: cert.label,
+          scadenza: certRecord.scadenza || undefined,
           ...attachment
         });
       }
